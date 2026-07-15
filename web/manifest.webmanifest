@@ -1,0 +1,19 @@
+{
+  "name": "IKIGAI Market",
+  "short_name": "IKIGAI",
+  "description": "Marketplace locale avec livraison suivie par IKIGAI.",
+  "start_url": "./marketplace/index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#17211f",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "./assets/brand-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
