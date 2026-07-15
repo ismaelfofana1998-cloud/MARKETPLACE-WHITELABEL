@@ -211,7 +211,19 @@ function ouvrirCommande(donnees, commandeId) {
 
 function afficherProduits(donnees) {
   const zone = document.querySelector("#marchand-zone");
-  zone.innerHTML = `<div class="entete-page"><div><h2>Catalogue</h2><p class="muted petit">Produits, photos, prix et stock</p></div><button class="btn btn-primaire" id="nouveau-produit">${icone("plus")} Nouveau produit</button></div>${donnees.produits.length ? `<div class="table-wrap"><table><thead><tr><th>Produit</th><th>Prix</th><th>Stock</th><th>Statut</th><th></th></tr></thead><tbody>${donnees.produits.map((produit) => `<tr><td><div class="cellule-produit"><img src="${escapeHtml(imageProduit(produit))}" alt=""><div><strong>${escapeHtml(produit.nom)}</strong><p class="muted petit" style="margin:3px 0">${escapeHtml(produit.marque || "")}</p></div></div></td><td>${fcfa(produit.prix)}</td><td>${stockProduit(produit)}</td><td>${badgeStatut(produit.statut)}</td><td><button class="btn btn-secondaire" data-editer-produit="${produit.id}">${icone("pencil")} Modifier</button></td></tr>`).join("")}</tbody></table></div>` : vide("package", "Aucun produit", "Ajoute le premier article de la boutique.")}`;
+  const publication = donnees.boutique.statut === "BROUILLON"
+    ? `<div class="bande-info ligne-entre" style="margin-bottom:17px"><div><strong>Boutique en brouillon</strong><p class="petit" style="margin:5px 0 0">Les produits ne sont pas encore visibles dans la marketplace.</p></div><button class="btn btn-primaire" id="publier-boutique">${icone("globe-2")} Publier</button></div>`
+    : "";
+  zone.innerHTML = `<div class="entete-page"><div><h2>Catalogue</h2><p class="muted petit">Produits, photos, prix et stock</p></div><button class="btn btn-primaire" id="nouveau-produit">${icone("plus")} Nouveau produit</button></div>${publication}${donnees.produits.length ? `<div class="table-wrap"><table><thead><tr><th>Produit</th><th>Prix</th><th>Stock</th><th>Statut</th><th></th></tr></thead><tbody>${donnees.produits.map((produit) => `<tr><td><div class="cellule-produit"><img src="${escapeHtml(imageProduit(produit))}" alt=""><div><strong>${escapeHtml(produit.nom)}</strong><p class="muted petit" style="margin:3px 0">${escapeHtml(produit.marque || "")}</p></div></div></td><td>${fcfa(produit.prix)}</td><td>${stockProduit(produit)}</td><td>${badgeStatut(produit.statut)}</td><td><button class="btn btn-secondaire" data-editer-produit="${produit.id}">${icone("pencil")} Modifier</button></td></tr>`).join("")}</tbody></table></div>` : vide("package", "Aucun produit", "Ajoute le premier article de la boutique.")}`;
+  zone.querySelector("#publier-boutique")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    boutonOccupe(button, true, "Publication...");
+    const { error } = await supabase.from("boutiques").update({ statut: "PUBLIEE" }).eq("id", donnees.boutique.id);
+    boutonOccupe(button, false);
+    if (error) return gererErreur(error);
+    toast("Boutique publiee");
+    location.reload();
+  });
   zone.querySelector("#nouveau-produit").addEventListener("click", () => ouvrirProduit(donnees, null));
   zone.querySelectorAll("[data-editer-produit]").forEach((button) => button.addEventListener("click", () => ouvrirProduit(donnees, donnees.produits.find((produit) => produit.id === button.dataset.editerProduit))));
   rafraichirIcones(zone);
@@ -232,6 +244,7 @@ function ouvrirProduit(donnees, produit) {
       const images = fichiers.length
         ? await Promise.all(fichiers.map((fichier) => televerserImage(fichier, `${donnees.boutique.id}/produits`)))
         : (produit?.images || []);
+      const publicationAutomatique = !produit && valeurs.statut === "ACTIF" && donnees.boutique.statut === "BROUILLON";
       const { error } = await supabase.rpc("rpc_enregistrer_produit_marketplace", {
         p_boutique_id: donnees.boutique.id,
         p_nom: valeurs.nom,
@@ -245,7 +258,7 @@ function ouvrirProduit(donnees, produit) {
         p_statut: valeurs.statut,
       });
       if (error) throw error;
-      toast("Produit enregistre");
+      toast(publicationAutomatique ? "Produit enregistre et boutique publiee" : "Produit enregistre");
       location.reload();
     } catch (error) {
       boutonOccupe(button, false);

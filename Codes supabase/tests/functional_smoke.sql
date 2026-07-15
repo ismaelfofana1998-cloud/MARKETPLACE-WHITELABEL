@@ -66,7 +66,9 @@ begin
     'ACTIF'
   );
 
-  update public.boutiques set statut = 'PUBLIEE' where id = v_boutique;
+  if (select statut from public.boutiques where id = v_boutique) <> 'PUBLIEE' then
+    raise exception 'La boutique n''a pas ete publiee avec son premier produit actif.';
+  end if;
   select id into v_variante
   from public.variantes_produit
   where produit_id = v_produit

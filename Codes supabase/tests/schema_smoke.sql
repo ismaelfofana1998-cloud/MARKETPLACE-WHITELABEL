@@ -36,6 +36,12 @@ begin
   ) then
     raise exception 'Protection RLS anti-recursion absente';
   end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'publier_boutique_produit_actif' and not tgisinternal
+  ) then
+    raise exception 'Publication automatique des boutiques absente';
+  end if;
   if not exists (select 1 from public.configuration_marketplace where id = 1) then
     raise exception 'configuration_marketplace non initialisee';
   end if;
