@@ -27,6 +27,21 @@ begin
   if not exists (select 1 from pg_proc where proname = 'rpc_enregistrer_produit_marketplace') then
     raise exception 'rpc_enregistrer_produit_marketplace absente';
   end if;
+  if not exists (select 1 from pg_proc where proname = 'rpc_rechercher_produits_marketplace') then
+    raise exception 'rpc_rechercher_produits_marketplace absente';
+  end if;
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'public' and indexname = 'produits_recherche_fts_idx'
+  ) then
+    raise exception 'Index de recherche catalogue absent';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'produits' and column_name = 'recherche_fts'
+  ) then
+    raise exception 'Colonne de recherche catalogue absente';
+  end if;
   if not exists (select 1 from pg_proc where proname = 'rpc_admin_creer_tenant') then
     raise exception 'rpc_admin_creer_tenant absente';
   end if;

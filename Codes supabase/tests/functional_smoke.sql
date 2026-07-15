@@ -10,6 +10,7 @@ declare
   v_invitation jsonb;
   v_organisation uuid;
   v_boutique uuid;
+  v_categorie uuid;
   v_produit uuid;
   v_variante uuid;
   v_adresse uuid;
@@ -18,6 +19,7 @@ declare
   v_stock integer;
   v_total bigint;
   v_historique integer;
+  v_resultats integer;
 begin
   insert into auth.users (id, email, raw_user_meta_data, created_at, updated_at)
   values
@@ -43,6 +45,15 @@ begin
   perform set_config('request.jwt.claim.sub', v_marchand::text, true);
   perform public.rpc_accepter_invitation((v_tenant ->> 'token')::uuid);
 
+  select id into v_categorie
+  from public.categories_marketplace
+  where actif
+  order by ordre, nom
+  limit 1;
+  if v_categorie is null then
+    raise exception 'Aucune categorie active pour le test marketplace.';
+  end if;
+
   v_invitation := public.rpc_inviter_membre(
     v_organisation,
     'agent-smoke@ikigai.test',
@@ -59,7 +70,7 @@ begin
     5000,
     10,
     null,
-    null,
+    v_categorie,
     'Produit de test transactionnel',
     'IKIGAI',
     array['https://example.test/produit.webp'],
@@ -68,6 +79,22 @@ begin
 
   if (select statut from public.boutiques where id = v_boutique) <> 'PUBLIEE' then
     raise exception 'La boutique n''a pas ete publiee avec son premier produit actif.';
+  end if;
+  select count(*) into v_resultats
+  from public.rpc_rechercher_produits_marketplace(
+    p_recherche => 'produit smoke',
+    p_categorie_id => null,
+    p_boutique_id => v_boutique,
+    p_prix_min => 1000,
+    p_prix_max => 10000,
+    p_note_min => null,
+    p_en_stock => true,
+    p_tri => 'PERTINENCE',
+    p_page => 1,
+    p_par_page => 24
+  );
+  if v_resultats <> 1 then
+    raise exception 'Recherche catalogue invalide : % resultat(s)', v_resultats;
   end if;
   select id into v_variante
   from public.variantes_produit

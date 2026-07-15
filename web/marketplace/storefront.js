@@ -13,6 +13,7 @@ import {
   actualiserCompteurPanier,
   app,
   badgeStatut,
+  brancherAjoutsPanier,
   brancherFavoris,
   carteProduit,
   chargerCategories,
@@ -32,78 +33,208 @@ async function chargerBoutiques() {
     .select("id, nom, slug, description, logo_url, banniere_url, note_moyenne")
     .eq("statut", "PUBLIEE")
     .order("note_moyenne", { ascending: false })
-    .limit(9);
+    .limit(200);
   if (error) throw error;
   return data || [];
 }
 
 export async function rendreAccueil() {
-  coquille(`<main><section class="hero-market"><div class="hero-contenu"><p>Marketplace locale</p><h1>${escapeHtml(etat.configuration.slogan)}</h1><p>${escapeHtml(etat.configuration.description)}</p><form class="recherche-hero" id="recherche-form"><input id="recherche" type="search" placeholder="Produit, marque ou boutique" autocomplete="off"><button aria-label="Rechercher">${icone("search")}</button></form><div class="hero-actions"><a class="btn btn-accent" href="#produits">Voir les produits</a><a class="btn btn-secondaire" href="./marchand.html">Ouvrir une boutique</a></div></div></section><div class="conteneur"><div class="vide">Chargement du catalogue...</div></div></main>`, { actif: "accueil" });
-  document.querySelector(".hero-market").style.backgroundImage = `url("${etat.configuration.hero_image_url}")`;
+  const lireNombre = (valeur) => {
+    if (valeur === null || valeur === "") return null;
+    const nombre = Number(valeur);
+    return Number.isFinite(nombre) && nombre >= 0 ? nombre : null;
+  };
+  const lireFiltres = () => {
+    const params = new URLSearchParams(location.search);
+    return {
+      recherche: (params.get("q") || "").trim().slice(0, 100),
+      categorieId: params.get("categorie") || "",
+      boutiqueId: params.get("boutique") || "",
+      prixMin: lireNombre(params.get("prix_min")),
+      prixMax: lireNombre(params.get("prix_max")),
+      noteMin: lireNombre(params.get("note")),
+      enStock: params.get("stock") === "1",
+      tri: ["PERTINENCE", "NOUVEAUTES", "PRIX_ASC", "PRIX_DESC", "NOTE"].includes(params.get("tri")) ? params.get("tri") : "PERTINENCE",
+      page: Math.max(1, Math.min(1000, Number(params.get("page")) || 1)),
+      parPage: 24,
+    };
+  };
+  let filtres = lireFiltres();
+  coquille('<main><div class="conteneur"><div class="vide">Chargement du catalogue...</div></div></main>', { actif: "accueil" });
 
   try {
-    const [categories, produits, boutiques, favoris] = await Promise.all([
+    const [categories, boutiques, favoris] = await Promise.all([
       chargerCategories(),
-      chargerProduits(),
       chargerBoutiques(),
       chargerFavoris(),
     ]);
     const main = document.querySelector("main");
-    main.querySelector(".conteneur").outerHTML = `<div class="conteneur">
-      <section class="section" id="categories">
-        <div class="entete-page"><div><h2>Explorer les categories</h2><p class="muted petit">Tout ce qu'il vous faut, pres de chez vous</p></div></div>
-        ${categories.length ? `<div class="grille-categories"><button class="categorie actif" data-categorie=""><img src="${etat.configuration.hero_image_url}" alt=""><span>Tout voir</span></button>${categories.map((categorie) => `<button class="categorie" data-categorie="${categorie.id}"><img src="${escapeHtml(categorie.image_url || etat.configuration.hero_image_url)}" alt=""><span>${escapeHtml(categorie.nom)}</span></button>`).join("")}</div>` : vide("layout-grid", "Les categories arrivent", "Le catalogue peut deja etre alimente depuis l'espace marchand.")}
-      </section>
-      <section class="section" id="produits">
-        <div class="entete-page"><div><h2>Produits disponibles</h2><p class="muted petit" id="resultat-compte">${produits.length} resultat${produits.length > 1 ? "s" : ""}</p></div></div>
-        <div class="grille-produits" id="grille-produits"></div>
-      </section>
-      <section class="section" id="boutiques">
-        <div class="entete-page"><div><h2>Boutiques a decouvrir</h2><p class="muted petit">Des marchands verifies sur IKIGAI Market</p></div></div>
-        <div class="grille-boutiques">${boutiques.map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiee", "La premiere boutique apparaitra ici des sa publication.")}</div>
-      </section>
-    </div>`;
+    main.innerHTML = `<section class="promo-market"><div class="promo-market-contenu"><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><a href="#produits">Explorer le catalogue ${icone("arrow-down")}</a></div></section>
+      <div class="services-market"><div><span>${icone("truck")}</span><p><strong>Livraison IKIGAI</strong><small>Suivi de la commande a la remise</small></p></div><div><span>${icone("shield-check")}</span><p><strong>Marchands identifies</strong><small>Boutiques et equipes controlees</small></p></div><div><span>${icone("rotate-ccw")}</span><p><strong>Commandes centralisees</strong><small>Retours et historique dans votre compte</small></p></div></div>
+      <div class="conteneur catalogue-conteneur">
+        <section class="section categories-market" id="categories">
+          <div class="entete-page"><div><h2>Parcourir les categories</h2><p class="muted petit">Acces rapide aux rayons du catalogue</p></div></div>
+          ${categories.length ? `<div class="grille-categories"><button class="categorie" data-categorie=""><img src="${escapeHtml(etat.configuration.hero_image_url)}" alt=""><span>Tout le catalogue</span></button>${categories.map((categorie) => `<button class="categorie" data-categorie="${categorie.id}"><img src="${escapeHtml(categorie.image_url || etat.configuration.hero_image_url)}" alt=""><span>${escapeHtml(categorie.nom)}</span></button>`).join("")}</div>` : vide("layout-grid", "Les categories arrivent", "Les produits restent accessibles dans le catalogue.")}
+        </section>
+        <section class="catalogue-layout" id="produits">
+          <aside class="filtres-catalogue" id="filtres-catalogue" aria-label="Filtres du catalogue">
+            <div class="filtres-entete"><h2>Filtrer</h2><button class="dialogue-fermer fermer-filtres" type="button" aria-label="Fermer">${icone("x")}</button></div>
+            <form id="filtres-form">
+              <div class="champ"><label for="filtre-categorie">Categorie</label><select id="filtre-categorie" name="categorie"><option value="">Toutes les categories</option>${categories.map((categorie) => `<option value="${categorie.id}">${escapeHtml(categorie.nom)}</option>`).join("")}</select></div>
+              <div class="champ"><label for="filtre-boutique">Boutique</label><select id="filtre-boutique" name="boutique"><option value="">Tous les marchands</option>${boutiques.map((boutique) => `<option value="${boutique.id}">${escapeHtml(boutique.nom)}</option>`).join("")}</select></div>
+              <fieldset class="filtre-groupe"><legend>Prix (FCFA)</legend><div class="grille-prix"><input name="prix_min" type="number" min="0" max="2000000000" step="100" placeholder="Minimum"><input name="prix_max" type="number" min="0" max="2000000000" step="100" placeholder="Maximum"></div></fieldset>
+              <fieldset class="filtre-groupe"><legend>Avis clients</legend><label class="option-filtre"><input type="radio" name="note" value="" checked> Toutes les notes</label><label class="option-filtre"><input type="radio" name="note" value="4"> ${icone("star")} 4 et plus</label><label class="option-filtre"><input type="radio" name="note" value="3"> ${icone("star")} 3 et plus</label></fieldset>
+              <label class="case filtre-stock"><input type="checkbox" name="stock" value="1"><span><strong>Disponible maintenant</strong><br><small class="muted">Masquer les articles epuises</small></span></label>
+              <button class="btn btn-primaire btn-bloc" type="submit">${icone("list-filter")} Appliquer</button>
+              <button class="btn btn-texte btn-bloc" type="button" id="effacer-filtres">Tout effacer</button>
+            </form>
+          </aside>
+          <section class="resultats-catalogue">
+            <div class="resultats-entete"><div><p class="sur-titre" id="contexte-resultats">Catalogue IKIGAI</p><h2 id="titre-resultats">Produits disponibles</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div><div class="outils-resultats"><button class="btn btn-secondaire ouvrir-filtres" type="button">${icone("list-filter")} Filtres</button><label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautes</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix decroissant</option><option value="NOTE">Mieux notes</option></select></div></div>
+            <div class="filtres-actifs" id="filtres-actifs"></div>
+            <div class="grille-produits" id="grille-produits"><div class="vide">Chargement des produits...</div></div>
+            <nav class="pagination" id="pagination" aria-label="Pagination du catalogue"></nav>
+          </section>
+        </section>
+        <section class="section" id="boutiques"><div class="entete-page"><div><h2>Boutiques a decouvrir</h2><p class="muted petit">Achetez directement aupres de marchands partenaires</p></div></div><div class="grille-boutiques">${boutiques.slice(0, 9).map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique partenaire IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiee", "La premiere boutique apparaitra ici des sa publication.")}</div></section>
+      </div>
+      <div class="fond-filtres" id="fond-filtres"></div>`;
+    document.querySelector(".promo-market").style.backgroundImage = `url("${String(etat.configuration.hero_image_url || "").replace(/["\\]/g, "")}")`;
 
-    let categorieActive = new URLSearchParams(location.search).get("categorie") || "";
-    let boutiqueActive = new URLSearchParams(location.search).get("boutique") || "";
-    let rechercheActive = "";
+    const form = document.querySelector("#filtres-form");
     const grille = document.querySelector("#grille-produits");
-    const afficher = () => {
-      const recherche = rechercheActive.toLocaleLowerCase("fr");
-      const filtres = produits.filter((produit) =>
-        (!categorieActive || produit.categorie_id === categorieActive)
-        && (!boutiqueActive || produit.boutique_id === boutiqueActive)
-        && (!recherche || `${produit.nom} ${produit.marque || ""} ${produit.boutique?.nom || ""}`.toLocaleLowerCase("fr").includes(recherche))
-      );
-      grille.innerHTML = filtres.length
-        ? filtres.map((produit) => carteProduit(produit, favoris)).join("")
-        : vide("search-x", "Aucun produit trouve", "Modifie les filtres ou reviens voir les nouveautes.", '<button class="btn btn-secondaire" id="reinitialiser">Reinitialiser</button>');
-      document.querySelector("#resultat-compte").textContent = `${filtres.length} resultat${filtres.length > 1 ? "s" : ""}`;
-      brancherFavoris(grille, favoris);
-      grille.querySelector("#reinitialiser")?.addEventListener("click", () => {
-        categorieActive = "";
-        boutiqueActive = "";
-        rechercheActive = "";
-        document.querySelector("#recherche").value = "";
-        document.querySelectorAll("[data-categorie]").forEach((button) => button.classList.toggle("actif", !button.dataset.categorie));
-        afficher();
-      });
-      rafraichirIcones(grille);
+    const synchroniserFormulaire = () => {
+      form.elements.categorie.value = filtres.categorieId;
+      form.elements.boutique.value = filtres.boutiqueId;
+      form.elements.prix_min.value = filtres.prixMin ?? "";
+      form.elements.prix_max.value = filtres.prixMax ?? "";
+      form.elements.stock.checked = filtres.enStock;
+      const note = form.querySelector(`[name="note"][value="${filtres.noteMin ?? ""}"]`);
+      if (note) note.checked = true;
+      document.querySelector("#tri-produits").value = filtres.tri;
+      document.querySelectorAll("[data-categorie]").forEach((button) => button.classList.toggle("actif", button.dataset.categorie === filtres.categorieId));
     };
-    afficher();
-    document.querySelectorAll("[data-categorie]").forEach((button) => button.addEventListener("click", () => {
-      categorieActive = button.dataset.categorie;
-      boutiqueActive = "";
-      document.querySelectorAll("[data-categorie]").forEach((element) => element.classList.toggle("actif", element === button));
-      afficher();
+    const mettreAJourUrl = () => {
+      const params = new URLSearchParams();
+      if (filtres.recherche) params.set("q", filtres.recherche);
+      if (filtres.categorieId) params.set("categorie", filtres.categorieId);
+      if (filtres.boutiqueId) params.set("boutique", filtres.boutiqueId);
+      if (filtres.prixMin !== null) params.set("prix_min", filtres.prixMin);
+      if (filtres.prixMax !== null) params.set("prix_max", filtres.prixMax);
+      if (filtres.noteMin !== null) params.set("note", filtres.noteMin);
+      if (filtres.enStock) params.set("stock", "1");
+      if (filtres.tri !== "PERTINENCE") params.set("tri", filtres.tri);
+      if (filtres.page > 1) params.set("page", filtres.page);
+      history.pushState({}, "", `${location.pathname}${params.size ? `?${params}` : ""}#produits`);
+    };
+    const fermerFiltres = () => {
+      document.querySelector("#filtres-catalogue").classList.remove("ouvert");
+      document.querySelector("#fond-filtres").classList.remove("visible");
+    };
+    const afficherFiltresActifs = () => {
+      const actifs = [];
+      const categorie = categories.find((element) => element.id === filtres.categorieId);
+      const boutique = boutiques.find((element) => element.id === filtres.boutiqueId);
+      if (filtres.recherche) actifs.push(["recherche", `Recherche : ${filtres.recherche}`]);
+      if (categorie) actifs.push(["categorie", categorie.nom]);
+      if (boutique) actifs.push(["boutique", boutique.nom]);
+      if (filtres.prixMin !== null) actifs.push(["prix_min", `Des ${fcfa(filtres.prixMin)}`]);
+      if (filtres.prixMax !== null) actifs.push(["prix_max", `Jusqu'a ${fcfa(filtres.prixMax)}`]);
+      if (filtres.noteMin !== null) actifs.push(["note", `${filtres.noteMin} etoiles et plus`]);
+      if (filtres.enStock) actifs.push(["stock", "En stock"]);
+      document.querySelector("#filtres-actifs").innerHTML = actifs.map(([cle, libelle]) => `<button data-retirer-filtre="${cle}">${escapeHtml(libelle)} ${icone("x")}</button>`).join("");
+      document.querySelectorAll("[data-retirer-filtre]").forEach((button) => button.addEventListener("click", async () => {
+        const cle = button.dataset.retirerFiltre;
+        if (cle === "recherche") filtres.recherche = "";
+        if (cle === "categorie") filtres.categorieId = "";
+        if (cle === "boutique") filtres.boutiqueId = "";
+        if (cle === "prix_min") filtres.prixMin = null;
+        if (cle === "prix_max") filtres.prixMax = null;
+        if (cle === "note") filtres.noteMin = null;
+        if (cle === "stock") filtres.enStock = false;
+        filtres.page = 1;
+        synchroniserFormulaire();
+        mettreAJourUrl();
+        await afficherCatalogue();
+      }));
+      rafraichirIcones(document.querySelector("#filtres-actifs"));
+    };
+    const afficherCatalogue = async () => {
+      grille.classList.add("chargement");
+      try {
+        const resultat = await chargerProduits(filtres);
+        grille.innerHTML = resultat.produits.length
+          ? resultat.produits.map((produit) => carteProduit(produit, favoris)).join("")
+          : vide("search-x", "Aucun produit trouve", "Essaie une autre recherche ou retire certains filtres.", '<button class="btn btn-secondaire" id="reinitialiser-catalogue">Tout afficher</button>');
+        document.querySelector("#resultat-compte").textContent = `${resultat.total} resultat${resultat.total > 1 ? "s" : ""}`;
+        document.querySelector("#contexte-resultats").textContent = filtres.recherche ? `Resultats pour "${filtres.recherche}"` : "Catalogue IKIGAI";
+        document.querySelector("#titre-resultats").textContent = categories.find((element) => element.id === filtres.categorieId)?.nom || boutiques.find((element) => element.id === filtres.boutiqueId)?.nom || "Produits disponibles";
+        const pages = Math.max(1, Math.ceil(resultat.total / resultat.parPage));
+        document.querySelector("#pagination").innerHTML = pages > 1 ? `<button ${filtres.page <= 1 ? "disabled" : ""} data-page="${filtres.page - 1}">${icone("chevron-left")} Precedent</button><span>Page ${filtres.page} sur ${pages}</span><button ${filtres.page >= pages ? "disabled" : ""} data-page="${filtres.page + 1}">Suivant ${icone("chevron-right")}</button>` : "";
+        document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", async () => {
+          filtres.page = Number(button.dataset.page);
+          mettreAJourUrl();
+          await afficherCatalogue();
+          document.querySelector("#produits").scrollIntoView({ behavior: "smooth" });
+        }));
+        document.querySelector("#reinitialiser-catalogue")?.addEventListener("click", async () => {
+          filtres = { recherche: "", categorieId: "", boutiqueId: "", prixMin: null, prixMax: null, noteMin: null, enStock: false, tri: "PERTINENCE", page: 1, parPage: 24 };
+          synchroniserFormulaire();
+          mettreAJourUrl();
+          await afficherCatalogue();
+        });
+        brancherFavoris(grille, favoris);
+        brancherAjoutsPanier(grille);
+        afficherFiltresActifs();
+        rafraichirIcones(grille.parentElement);
+      } catch (error) {
+        grille.innerHTML = vide("wifi-off", "Catalogue indisponible", messageErreur(error));
+      } finally {
+        grille.classList.remove("chargement");
+      }
+    };
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const valeurs = Object.fromEntries(new FormData(form));
+      const prixMin = lireNombre(valeurs.prix_min);
+      const prixMax = lireNombre(valeurs.prix_max);
+      if (prixMin !== null && prixMax !== null && prixMax < prixMin) return toast("Le prix maximum doit etre superieur au prix minimum.", true);
+      filtres = { ...filtres, categorieId: valeurs.categorie || "", boutiqueId: valeurs.boutique || "", prixMin, prixMax, noteMin: lireNombre(valeurs.note), enStock: valeurs.stock === "1", page: 1 };
+      fermerFiltres();
+      synchroniserFormulaire();
+      mettreAJourUrl();
+      await afficherCatalogue();
+    });
+    document.querySelector("#tri-produits").addEventListener("change", async (event) => {
+      filtres.tri = event.target.value;
+      filtres.page = 1;
+      mettreAJourUrl();
+      await afficherCatalogue();
+    });
+    document.querySelector("#effacer-filtres").addEventListener("click", async () => {
+      filtres = { ...filtres, categorieId: "", boutiqueId: "", prixMin: null, prixMax: null, noteMin: null, enStock: false, page: 1 };
+      synchroniserFormulaire();
+      mettreAJourUrl();
+      await afficherCatalogue();
+    });
+    document.querySelectorAll("[data-categorie]").forEach((button) => button.addEventListener("click", async () => {
+      filtres.categorieId = button.dataset.categorie;
+      filtres.page = 1;
+      synchroniserFormulaire();
+      mettreAJourUrl();
+      await afficherCatalogue();
       document.querySelector("#produits").scrollIntoView({ behavior: "smooth" });
     }));
-    document.querySelector("#recherche-form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      rechercheActive = document.querySelector("#recherche").value.trim();
-      afficher();
-      document.querySelector("#produits").scrollIntoView({ behavior: "smooth" });
+    document.querySelector(".ouvrir-filtres").addEventListener("click", () => {
+      document.querySelector("#filtres-catalogue").classList.add("ouvert");
+      document.querySelector("#fond-filtres").classList.add("visible");
     });
+    document.querySelector(".fermer-filtres").addEventListener("click", fermerFiltres);
+    document.querySelector("#fond-filtres").addEventListener("click", fermerFiltres);
+    window.addEventListener("popstate", () => location.reload(), { once: true });
+    synchroniserFormulaire();
+    await afficherCatalogue();
     rafraichirIcones(main);
   } catch (error) {
     document.querySelector("main .conteneur").innerHTML = vide("wifi-off", "Catalogue indisponible", messageErreur(error));
@@ -146,7 +277,12 @@ export async function rendreProduit() {
     const variantes = produit.variantes.filter((variante) => variante.actif);
     const premiereVariante = variantes[0];
     const avis = produit.avis_produits || [];
+    const similairesResultat = produit.categorie_id
+      ? await chargerProduits({ categorieId: produit.categorie_id, limit: 6, tri: "NOUVEAUTES" })
+      : { produits: [] };
+    const similaires = similairesResultat.produits.filter((element) => element.id !== produit.id).slice(0, 5);
     coquille(`<main class="conteneur">
+      <nav class="fil-ariane" aria-label="Fil d'Ariane"><a href="./index.html">Accueil</a><span>${icone("chevron-right")}</span><a href="./index.html?categorie=${produit.categorie_id || ""}#produits">Catalogue</a><span>${icone("chevron-right")}</span><strong>${escapeHtml(produit.nom)}</strong></nav>
       <section class="section produit-detail">
         <div><img class="produit-detail-image" id="image-principale" src="${escapeHtml(images[0])}" alt="${escapeHtml(produit.nom)}"><div class="miniatures">${images.map((image, index) => `<button class="miniature ${index === 0 ? "actif" : ""}" data-image="${escapeHtml(image)}"><img src="${escapeHtml(image)}" alt=""></button>`).join("")}</div></div>
         <div>
@@ -158,13 +294,15 @@ export async function rendreProduit() {
           ${variantes.length > 1 ? `<div class="champ"><label>Option</label><select id="variante">${variantes.map((variante) => `<option value="${variante.id}">${escapeHtml(variante.nom)}${variante.prix ? ` - ${fcfa(variante.prix)}` : ""}</option>`).join("")}</select></div>` : ""}
           <p class="petit ${produit.stock > 0 ? "muted" : "badge-danger"}">${produit.stock > 0 ? `${produit.stock} article${produit.stock > 1 ? "s" : ""} disponible${produit.stock > 1 ? "s" : ""}` : "Stock epuise"}</p>
           <div class="ligne"><div class="stepper"><button id="moins" aria-label="Diminuer">${icone("minus")}</button><span id="quantite">1</span><button id="plus" aria-label="Augmenter">${icone("plus")}</button></div><button class="btn btn-primaire" style="flex:1" id="ajouter" ${produit.stock <= 0 ? "disabled" : ""}>${icone("shopping-bag")} Ajouter au panier</button><button class="btn btn-secondaire" id="partager" aria-label="Partager">${icone("share-2")}</button></div>
-          <div class="carte" style="margin-top:18px"><div class="ligne"><span class="badge badge-succes">${icone("truck")}</span><div><strong>Livraison suivie par IKIGAI</strong><p class="muted petit" style="margin:4px 0 0">Frais de base : ${fcfa(produit.boutique?.frais_livraison_base)}</p></div></div></div>
+          <div class="carte achat-garanties" style="margin-top:18px"><div class="ligne"><span class="badge badge-succes">${icone("truck")}</span><div><strong>Livraison suivie par IKIGAI</strong><p class="muted petit" style="margin:4px 0 0">Frais de base : ${fcfa(produit.boutique?.frais_livraison_base)}</p></div></div><div class="engagement-produit"><span>${icone("shield-check")} Paiement et commande securises</span><span>${icone("rotate-ccw")} Historique et retour depuis votre compte</span></div></div>
         </div>
       </section>
       <section class="section"><div class="carte boutique-carte"><img class="boutique-logo" src="${escapeHtml(produit.boutique?.logo_url || images[0])}" alt=""><div><h2>${escapeHtml(produit.boutique?.nom)}</h2><p class="muted petit">${escapeHtml(produit.boutique?.description || produit.boutique?.adresse || "Marchand IKIGAI Market")}</p><a class="btn btn-secondaire" href="./index.html?boutique=${produit.boutique_id}#produits">Voir ses produits</a></div></div></section>
+      ${similaires.length ? `<section class="section"><div class="entete-page"><div><h2>Produits similaires</h2><p class="muted petit">Dans la meme categorie</p></div><a class="btn btn-texte" href="./index.html?categorie=${produit.categorie_id}#produits">Tout voir ${icone("arrow-right")}</a></div><div class="grille-produits" id="produits-similaires">${similaires.map((element) => carteProduit(element, favoris)).join("")}</div></section>` : ""}
       <section class="section"><h2>Avis clients</h2><div class="pile">${avis.length ? avis.slice(0, 8).map((avisProduit) => `<article class="carte"><div class="ligne-entre"><strong>${escapeHtml(`${avisProduit.identites?.prenom || "Client"} ${avisProduit.identites?.nom?.[0] || ""}`.trim())}</strong><span class="note">${icone("star")} ${avisProduit.note}/5</span></div><p class="muted petit" style="margin:8px 0 0">${escapeHtml(avisProduit.commentaire || "A recommande ce produit.")}</p></article>`).join("") : '<p class="muted">Aucun avis pour le moment.</p>'}</div></section>
     </main>`);
     brancherFavoris(app, favoris);
+    brancherAjoutsPanier(document.querySelector("#produits-similaires") || document.createElement("div"));
     let quantite = 1;
     const afficherQuantite = () => { document.querySelector("#quantite").textContent = quantite; };
     document.querySelector("#moins").addEventListener("click", () => { quantite = Math.max(1, quantite - 1); afficherQuantite(); });
