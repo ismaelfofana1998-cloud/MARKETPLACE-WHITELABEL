@@ -33,4 +33,29 @@ begin
   if not exists (select 1 from public.configuration_marketplace where id = 1) then
     raise exception 'configuration_marketplace non initialisee';
   end if;
+
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'rpc_changer_statut_commande_marketplace'
+      and pg_get_function_identity_arguments(p.oid) = 'p_commande_id uuid, p_nouveau_statut text'
+  ) then
+    raise exception 'Ancienne RPC de statut encore exposee';
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'marketplace_medias_lecture'
+  ) then
+    raise exception 'Le bucket public permet encore l''enumeration des medias';
+  end if;
+
+  if has_function_privilege('anon', 'public.rls_auto_enable()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.rls_auto_enable()', 'EXECUTE') then
+    raise exception 'rls_auto_enable reste exposee comme RPC';
+  end if;
 end $$;

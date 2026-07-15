@@ -406,6 +406,10 @@ begin
 end;
 $$;
 
+-- Remplace l'ancienne RPC a deux arguments pour eviter deux contrats PostgREST
+-- concurrents et garantir journalisation, motif et restauration du stock.
+drop function if exists public.rpc_changer_statut_commande_marketplace(uuid, text);
+
 create or replace function public.rpc_changer_statut_commande_marketplace(
   p_commande_id uuid,
   p_nouveau_statut text,
