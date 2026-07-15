@@ -30,6 +30,12 @@ begin
   if not exists (select 1 from pg_proc where proname = 'rpc_admin_creer_tenant') then
     raise exception 'rpc_admin_creer_tenant absente';
   end if;
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'peut_lire_commande'
+  ) then
+    raise exception 'Protection RLS anti-recursion absente';
+  end if;
   if not exists (select 1 from public.configuration_marketplace where id = 1) then
     raise exception 'configuration_marketplace non initialisee';
   end if;

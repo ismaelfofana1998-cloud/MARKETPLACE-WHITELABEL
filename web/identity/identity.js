@@ -10,6 +10,8 @@ import {
   slugifier,
   supabase,
   toast,
+  urlConfirmationCourante,
+  urlIdentity,
 } from "../assets/api.js";
 
 const app = document.querySelector("#identity-app");
@@ -66,7 +68,7 @@ function rendreAuth(modeInitial = "connexion") {
       const button = document.querySelector("#auth-submit");
       boutonOccupe(button, true, inscription ? "Creation..." : "Connexion...");
       const resultat = inscription
-        ? await supabase.auth.signUp({ email: valeurs.email.trim(), password: valeurs.password, options: { data: { prenom: valeurs.prenom.trim(), nom: valeurs.nom.trim(), telephone: valeurs.telephone?.trim() || null } } })
+        ? await supabase.auth.signUp({ email: valeurs.email.trim(), password: valeurs.password, options: { emailRedirectTo: urlConfirmationCourante(), data: { prenom: valeurs.prenom.trim(), nom: valeurs.nom.trim(), telephone: valeurs.telephone?.trim() || null } } })
         : await supabase.auth.signInWithPassword({ email: valeurs.email.trim(), password: valeurs.password });
       boutonOccupe(button, false);
       if (resultat.error) return erreur(resultat.error);
@@ -78,7 +80,7 @@ function rendreAuth(modeInitial = "connexion") {
     document.querySelector("#oublie")?.addEventListener("click", async () => {
       const email = document.querySelector('[name="email"]').value.trim();
       if (!email) return toast("Saisis ton email.", true);
-      const { error: resetErreur } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
+      const { error: resetErreur } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: urlIdentity("recuperation") });
       resetErreur ? erreur(resetErreur) : toast("Lien de reinitialisation envoye");
     });
     rafraichirIcones(document.querySelector("#auth-zone"));
@@ -202,6 +204,7 @@ async function demarrer() {
   appliquerTheme(etat.configuration);
   await chargerDonnees();
   if (!etat.session) { rendreAuth(); return; }
+  if (new URLSearchParams(location.search).get("mode") === "recuperation") etat.onglet = "securite";
   await accepterInvitation();
   rendreDashboard();
 }

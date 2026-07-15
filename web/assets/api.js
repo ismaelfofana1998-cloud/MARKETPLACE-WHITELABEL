@@ -13,6 +13,18 @@ export const supabase = configurationManquante
       },
     });
 
+export function urlConfirmationCourante() {
+  const url = new URL(location.href);
+  url.hash = "";
+  return url.href;
+}
+
+export function urlIdentity(mode = null) {
+  const url = new URL("../identity/index.html", import.meta.url);
+  if (mode) url.searchParams.set("mode", mode);
+  return url.href;
+}
+
 export const IMAGE_PRODUIT_DEFAUT =
   "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1000&q=82";
 

@@ -10,6 +10,8 @@ import {
   rafraichirIcones,
   supabase,
   toast,
+  urlConfirmationCourante,
+  urlIdentity,
 } from "../assets/api.js";
 import {
   app,
@@ -45,7 +47,7 @@ function rendreAuthentification() {
         ? await supabase.auth.signUp({
             email: valeurs.email.trim(),
             password: valeurs.password,
-            options: { data: { prenom: valeurs.prenom.trim(), nom: valeurs.nom.trim(), telephone: valeurs.telephone?.trim() || null } },
+            options: { emailRedirectTo: urlConfirmationCourante(), data: { prenom: valeurs.prenom.trim(), nom: valeurs.nom.trim(), telephone: valeurs.telephone?.trim() || null } },
           })
         : await supabase.auth.signInWithPassword({ email: valeurs.email.trim(), password: valeurs.password });
       boutonOccupe(button, false);
@@ -58,7 +60,7 @@ function rendreAuthentification() {
     document.querySelector("#mot-de-passe-oublie")?.addEventListener("click", async () => {
       const email = document.querySelector('[name="email"]').value.trim();
       if (!email) return toast("Saisis d'abord ton email.", true);
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${location.origin}${location.pathname}` });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: urlIdentity("recuperation") });
       error ? gererErreur(error) : toast("Lien de reinitialisation envoye");
     });
   };
@@ -67,14 +69,15 @@ function rendreAuthentification() {
 }
 
 async function chargerCompte() {
-  const [profil, achats, adresses, favoris, liens] = await Promise.all([
+  const [profil, achats, adresses, favoris, liens, administrateur] = await Promise.all([
     supabase.from("identites").select("*").eq("id", etat.session.user.id).single(),
     supabase.from("achats").select("id, reference, statut_paiement, mode_paiement, sous_total, frais_livraison, total, cree_le, adresses_livraison(libelle, destinataire_nom, telephone, adresse, commune, indications), commandes_marketplace(id, reference, statut, sous_total, frais_livraison, total, note_client, motif_annulation, cree_le, boutiques(id, nom, logo_url), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, cree_le))").eq("acheteur_id", etat.session.user.id).order("cree_le", { ascending: false }),
     supabase.from("adresses_livraison").select("*").eq("identite_id", etat.session.user.id).order("principale", { ascending: false }).order("cree_le", { ascending: false }),
     supabase.from("favoris_marketplace").select("produit_id, produits(id, boutique_id, categorie_id, nom, slug, description, marque, prix, prix_barre, images, statut, cree_le, boutiques(id, nom, slug, logo_url, statut), variantes_produit(id, nom, prix, actif, stocks(quantite)), avis_produits(note))").eq("identite_id", etat.session.user.id),
     supabase.from("membres_organisation").select("role, statut, organisations(id, nom, type)").eq("identite_id", etat.session.user.id).eq("statut", "ACTIF"),
+    supabase.from("administrateurs_plateforme").select("role, actif").eq("identite_id", etat.session.user.id).eq("actif", true).maybeSingle(),
   ]);
-  const erreurs = [profil.error, achats.error, adresses.error, favoris.error, liens.error].filter(Boolean);
+  const erreurs = [profil.error, achats.error, adresses.error, favoris.error, liens.error, administrateur.error].filter(Boolean);
   if (erreurs.length) throw erreurs[0];
   return {
     profil: profil.data || {},
@@ -82,6 +85,7 @@ async function chargerCompte() {
     adresses: adresses.data || [],
     favoris: (favoris.data || []).map((favori) => favori.produits).filter(Boolean).map(normaliserProduit),
     organisations: (liens.data || []).map((lien) => ({ ...lien.organisations, role: lien.role })),
+    administrateur: administrateur.data || null,
   };
 }
 
@@ -103,7 +107,7 @@ export async function rendreCompte() {
   try {
     const donnees = await chargerCompte();
     const prenom = donnees.profil.prenom || etat.session.user.email.split("@")[0];
-    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Bonjour ${escapeHtml(prenom)}</h1><p class="muted">${escapeHtml(etat.session.user.email)}</p></div><button class="btn btn-secondaire" id="deconnexion">${icone("log-out")} Deconnexion</button></div><div class="onglets" id="compte-tabs"><button class="onglet actif" data-tab="commandes">Commandes</button><button class="onglet" data-tab="profil">Profil</button><button class="onglet" data-tab="adresses">Adresses</button><button class="onglet" data-tab="favoris">Favoris</button><button class="onglet" data-tab="pro">Espace pro</button></div><section class="section" id="compte-zone"></section></main><dialog class="dialogue" id="detail-dialog"><div class="dialogue-entete"><h2>Detail de la commande</h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="detail-zone"></div></dialog>`, { actif: "compte" });
+    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Bonjour ${escapeHtml(prenom)}</h1><p class="muted">${escapeHtml(etat.session.user.email)}</p></div><button class="btn btn-secondaire" id="deconnexion">${icone("log-out")} Deconnexion</button></div><div class="onglets" id="compte-tabs"><button class="onglet actif" data-tab="commandes">Commandes</button><button class="onglet" data-tab="profil">Profil</button><button class="onglet" data-tab="adresses">Adresses</button><button class="onglet" data-tab="favoris">Favoris</button><button class="onglet" data-tab="pro">Espace pro</button>${donnees.administrateur ? '<a class="onglet" href="./admin.html">Administration</a>' : ""}</div><section class="section" id="compte-zone"></section></main><dialog class="dialogue" id="detail-dialog"><div class="dialogue-entete"><h2>Detail de la commande</h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="detail-zone"></div></dialog>`, { actif: "compte" });
     const zone = document.querySelector("#compte-zone");
     const afficherCommandes = () => {
       zone.innerHTML = donnees.achats.length ? `<div class="pile">${donnees.achats.map(carteCommande).join("")}</div>` : vide("package-open", "Aucune commande", "Tes prochaines commandes apparaitront ici.", '<a class="btn btn-primaire" href="./index.html">Decouvrir le catalogue</a>');
@@ -173,7 +177,7 @@ export async function rendreCompte() {
     };
     const afficherPro = () => {
       const marchandes = donnees.organisations.filter((organisation) => ["MARCHAND", "RESTAURANT"].includes(organisation.type));
-      zone.innerHTML = `<div class="grille-deux"><article class="carte"><h2>Espace marchand</h2><p class="muted">${marchandes.length ? `Tu as acces a ${marchandes.length} organisation${marchandes.length > 1 ? "s" : ""} marchande${marchandes.length > 1 ? "s" : ""}.` : "Cree ta boutique, ajoute tes articles et traite les commandes de ton equipe."}</p><a class="btn btn-primaire" href="./marchand.html">${icone("store")} ${marchandes.length ? "Ouvrir l'espace marchand" : "Creer ma boutique"}</a></article><article class="carte"><h2>Identite et equipe</h2><p class="muted">Gere tes organisations, tes salaries et leurs roles depuis IKIGAI Identity.</p><a class="btn btn-secondaire" href="../identity/index.html">${icone("users")} Gerer mes organisations</a></article></div>`;
+      zone.innerHTML = `<div class="grille-deux">${donnees.administrateur ? `<article class="carte"><h2>Administration plateforme</h2><p class="muted">Pilotage des tenants, boutiques, commandes, livraisons et de l'apparence.</p><a class="btn btn-primaire" href="./admin.html">${icone("shield-check")} Ouvrir l'administration</a></article>` : ""}<article class="carte"><h2>Espace marchand</h2><p class="muted">${marchandes.length ? `Tu as acces a ${marchandes.length} organisation${marchandes.length > 1 ? "s" : ""} marchande${marchandes.length > 1 ? "s" : ""}.` : "Cree ta boutique, ajoute tes articles et traite les commandes de ton equipe."}</p><a class="btn btn-primaire" href="./marchand.html">${icone("store")} ${marchandes.length ? "Ouvrir l'espace marchand" : "Creer ma boutique"}</a></article><article class="carte"><h2>Identite et equipe</h2><p class="muted">Gere tes organisations, tes salaries et leurs roles depuis IKIGAI Identity.</p><a class="btn btn-secondaire" href="../identity/index.html">${icone("users")} Gerer mes organisations</a></article></div>`;
       rafraichirIcones(zone);
     };
     const affichages = { commandes: afficherCommandes, profil: afficherProfil, adresses: afficherAdresses, favoris: afficherFavoris, pro: afficherPro };

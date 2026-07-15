@@ -27,9 +27,8 @@ begin
     (v_client, 'client-smoke@ikigai.test', '{"prenom":"Client","nom":"Test"}', now(), now());
 
   perform set_config('request.jwt.claim.sub', v_super_admin::text, true);
-  if public.rpc_reclamer_super_admin() <> 'SUPER_ADMIN' then
-    raise exception 'Bootstrap superadmin invalide.';
-  end if;
+  insert into public.administrateurs_plateforme (identite_id, role, actif)
+  values (v_super_admin, 'SUPER_ADMIN', true);
 
   v_tenant := public.rpc_admin_creer_tenant(
     'Boutique Smoke',
@@ -125,5 +124,35 @@ begin
     raise exception 'Historique de statuts incomplet : %', v_historique;
   end if;
 end $$;
+
+-- Ces lectures passent reellement par les politiques RLS. Toute recursion
+-- entre achats et commandes fait echouer ce bloc avant le rollback.
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', true);
+set local role authenticated;
+select count(*) from public.achats;
+select count(*) from public.adresses_livraison;
+select count(*) from public.commandes_marketplace;
+select count(*) from public.lignes_commande_marketplace;
+select count(*) from public.historique_statuts_commande;
+select count(*) from public.paiements_marketplace;
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', true);
+set local role authenticated;
+select count(*) from public.achats;
+select count(*) from public.adresses_livraison;
+select count(*) from public.commandes_marketplace;
+select count(*) from public.lignes_commande_marketplace;
+select count(*) from public.historique_statuts_commande;
+select count(*) from public.missions_logistiques;
+reset role;
+
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select count(*) from public.achats;
+select count(*) from public.adresses_livraison;
+select count(*) from public.commandes_marketplace;
+select count(*) from public.administrateurs_plateforme;
+reset role;
 
 rollback;

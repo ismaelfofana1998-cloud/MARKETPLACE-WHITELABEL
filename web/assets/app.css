@@ -253,7 +253,7 @@ h3 { font-size: 15px; line-height: 1.3; letter-spacing: 0; }
 .resume-sticky { position: sticky; top: 88px; align-self: start; }
 
 .onglets { display: flex; gap: 3px; border-bottom: 1px solid var(--ligne); overflow-x: auto; scrollbar-width: none; }
-.onglet { min-height: 44px; padding: 0 13px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--texte-doux); font-weight: 800; font-size: 13px; white-space: nowrap; }
+.onglet { min-height: 44px; padding: 0 13px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--texte-doux); display: inline-flex; align-items: center; font-weight: 800; font-size: 13px; white-space: nowrap; }
 .onglet.actif { color: var(--primaire); border-bottom-color: var(--primaire); }
 .menu-lateral { display: grid; align-content: start; gap: 4px; padding-right: 15px; border-right: 1px solid var(--ligne); }
 .menu-lateral button, .menu-lateral a { width: 100%; min-height: 42px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent; color: var(--texte-doux); display: flex; align-items: center; gap: 9px; text-align: left; font-size: 13px; font-weight: 800; }
