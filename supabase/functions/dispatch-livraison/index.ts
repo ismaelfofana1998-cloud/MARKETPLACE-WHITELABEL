@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: integration, error: integrationError } = await admin
-    .rpc("rpc_lire_integration_ikms", { p_organisation_id: organisationId });
+    .rpc("rpc_lire_integration_ikms_boutique", { p_boutique_id: commande.boutique_id });
   if (integrationError) return json({ error: integrationError.message }, 500);
   if (!integration?.actif || !integration?.api_key || !integration?.api_base_url) {
     return json({ error: "Connexion IKMS inactive ou incomplete." }, 409);

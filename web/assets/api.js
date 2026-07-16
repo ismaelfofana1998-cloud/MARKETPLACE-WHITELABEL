@@ -43,7 +43,7 @@ export const configurationDefaut = {
   couleur_accent: "#E9AE36",
   email_support: null,
   telephone_support: null,
-  site_public_url: "https://ismaelfofana1998-cloud.github.io/MARKETPLACE/",
+  site_public_url: "https://ismaelfofana1998-cloud.github.io/MARKETPLACE-WHITELABEL/",
   ikms_tenant_nom: "IKIGAI Livraison",
   ikms_tenant_code: "IKIGAI",
   ikms_api_base_url: null,

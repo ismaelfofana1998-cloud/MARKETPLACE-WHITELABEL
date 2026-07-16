@@ -15,7 +15,7 @@ import {
   supprimerImageStockage,
   televerserImage,
   toast,
-} from "../assets/api.js?v=8";
+} from "../assets/api.js?v=9";
 import {
   app,
   badgeStatut,
@@ -24,7 +24,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=8";
+} from "./shared.js?v=9";
 
 async function verifierAdmin() {
   const { data, error } = await supabase
@@ -53,8 +53,8 @@ function afficherInitialisation() {
 
 async function chargerAdministration() {
   const resultats = await Promise.all([
-    supabase.from("organisations").select("id, nom, slug, type, actif, cree_le, membres_organisation(identite_id, role, statut)").order("cree_le", { ascending: false }),
-    supabase.from("boutiques").select("id, organisation_id, nom, slug, statut, note_moyenne, cree_le, organisations(nom, type)").order("cree_le", { ascending: false }),
+    supabase.from("organisations").select("id, nom, slug, type, actif, cree_le, membres_organisation(identite_id, role, statut), offres_organisations(offre, white_label_actif, domaines_personnalises, max_etablissements, active)").order("cree_le", { ascending: false }),
+    supabase.from("boutiques").select("id, organisation_id, nom, slug, mode_vitrine, statut, note_moyenne, cree_le, organisations(nom, type)").order("cree_le", { ascending: false }),
     supabase.from("produits").select("id, boutique_id, statut", { count: "exact" }),
     supabase.from("commandes_marketplace").select("id, reference, boutique_id, statut, total, cree_le, boutiques(nom)").order("cree_le", { ascending: false }).limit(300),
     supabase.from("missions_logistiques").select("id, commande_id, statut, statut_ikms, commande_livraison_externe_id, tentatives, derniere_erreur, derniere_synchronisation, cree_le, commandes_marketplace(reference, boutiques(nom))").order("cree_le", { ascending: false }).limit(100),
@@ -62,6 +62,7 @@ async function chargerAdministration() {
     supabase.from("configuration_marketplace").select("*").eq("id", 1).single(),
     supabase.from("administrateurs_plateforme").select("identite_id, role, actif, identites(prenom, nom, email)").order("cree_le"),
     supabase.from("identites").select("id", { count: "exact", head: true }),
+    supabase.from("domaines_boutique").select("id, boutique_id, domaine, statut, principal, verifie_le, boutiques(nom)").order("cree_le", { ascending: false }),
   ]);
   const erreur = resultats.map((resultat) => resultat.error).find(Boolean);
   if (erreur) throw erreur;
@@ -76,6 +77,7 @@ async function chargerAdministration() {
     configuration: resultats[6].data || etat.configuration,
     administrateurs: resultats[7].data || [],
     identitesCount: resultats[8].count || 0,
+    domaines: resultats[9].data || [],
   };
 }
 
@@ -127,9 +129,36 @@ function afficherTableau(donnees) {
 
 function afficherTenants(admin, donnees) {
   const zone = document.querySelector("#admin-zone");
-  zone.innerHTML = `<div class="entete-page"><div><h2>Tenants et organisations</h2><p class="muted petit">Un tenant devient marchand lorsqu'une boutique lui est associee.</p></div>${admin.role === "SUPER_ADMIN" ? `<button class="btn btn-primaire" id="nouveau-tenant">${icone("plus")} Nouveau tenant</button>` : ""}</div>${donnees.organisations.length ? `<div class="table-wrap"><table><thead><tr><th>Organisation</th><th>Type</th><th>Membres</th><th>Creee le</th><th>Etat</th></tr></thead><tbody>${donnees.organisations.map((organisation) => `<tr><td><strong>${escapeHtml(organisation.nom)}</strong><p class="muted petit" style="margin:3px 0">${escapeHtml(organisation.slug)}</p></td><td><span class="badge">${escapeHtml(organisation.type)}</span></td><td>${organisation.membres_organisation?.filter((membre) => membre.statut === "ACTIF").length || 0}</td><td>${formatDate(organisation.cree_le)}</td><td>${badgeStatut(organisation.actif ? "ACTIF" : "SUSPENDUE")}</td></tr>`).join("")}</tbody></table></div>` : vide("building-2", "Aucun tenant") }<div id="tenant-resultat" style="margin-top:15px"></div><section class="section"><h2>Equipe plateforme</h2><div class="pile">${donnees.administrateurs.map((administrateur) => `<div class="carte ligne-entre"><div><strong>${escapeHtml(`${administrateur.identites?.prenom || ""} ${administrateur.identites?.nom || ""}`.trim() || administrateur.identites?.email || "Administrateur")}</strong><p class="muted petit" style="margin:4px 0 0">${escapeHtml(administrateur.identites?.email || "")}</p></div><span class="badge">${escapeHtml(administrateur.role)}</span></div>`).join("")}</div></section>`;
+  zone.innerHTML = `<div class="entete-page"><div><h2>Tenants et organisations</h2><p class="muted petit">L’offre Site dédié active une URL personnalisable pour chaque établissement.</p></div>${admin.role === "SUPER_ADMIN" ? `<button class="btn btn-primaire" id="nouveau-tenant">${icone("plus")} Nouveau tenant</button>` : ""}</div>${donnees.organisations.length ? `<div class="table-wrap"><table><thead><tr><th>Organisation</th><th>Type</th><th>Offre</th><th>Établissements</th><th>Membres</th><th>Etat</th><th></th></tr></thead><tbody>${donnees.organisations.map((organisation) => { const offre = Array.isArray(organisation.offres_organisations) ? organisation.offres_organisations[0] : organisation.offres_organisations; const nombre = donnees.boutiques.filter((boutique) => boutique.organisation_id === organisation.id).length; return `<tr><td><strong>${escapeHtml(organisation.nom)}</strong><p class="muted petit" style="margin:3px 0">${escapeHtml(organisation.slug)}</p></td><td><span class="badge">${escapeHtml(organisation.type)}</span></td><td>${badgeStatut(offre?.offre === "WHITE_LABEL" ? "ACTIF" : "STANDARD")}<span class="petit"> ${offre?.offre === "WHITE_LABEL" ? "Site dédié" : "Marketplace standard"}</span></td><td>${nombre} / ${Number(offre?.max_etablissements || 1)}</td><td>${organisation.membres_organisation?.filter((membre) => membre.statut === "ACTIF").length || 0}</td><td>${badgeStatut(organisation.actif ? "ACTIF" : "SUSPENDUE")}</td><td>${admin.role === "SUPER_ADMIN" ? `<button class="btn btn-secondaire" data-offre-organisation="${organisation.id}">${icone("settings")} Offre</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>` : vide("building-2", "Aucun tenant") }<div id="tenant-resultat" style="margin-top:15px"></div><section class="section"><h2>Equipe plateforme</h2><div class="pile">${donnees.administrateurs.map((administrateur) => `<div class="carte ligne-entre"><div><strong>${escapeHtml(`${administrateur.identites?.prenom || ""} ${administrateur.identites?.nom || ""}`.trim() || administrateur.identites?.email || "Administrateur")}</strong><p class="muted petit" style="margin:4px 0 0">${escapeHtml(administrateur.identites?.email || "")}</p></div><span class="badge">${escapeHtml(administrateur.role)}</span></div>`).join("")}</div></section>`;
   zone.querySelector("#nouveau-tenant")?.addEventListener("click", () => ouvrirTenant(donnees));
+  zone.querySelectorAll("[data-offre-organisation]").forEach((button) => button.addEventListener("click", () => ouvrirOffreOrganisation(donnees, button.dataset.offreOrganisation)));
   rafraichirIcones(zone);
+}
+
+function ouvrirOffreOrganisation(donnees, organisationId) {
+  const organisation = donnees.organisations.find((element) => element.id === organisationId);
+  const offre = (Array.isArray(organisation.offres_organisations) ? organisation.offres_organisations[0] : organisation.offres_organisations) || { offre: "STANDARD", max_etablissements: 1 };
+  document.querySelector("#admin-dialog-title").textContent = `Offre · ${organisation.nom}`;
+  document.querySelector("#admin-dialog-zone").innerHTML = `<form id="offre-form"><div class="champ"><label>Type d'offre</label><select name="offre"><option value="STANDARD" ${offre.offre === "STANDARD" ? "selected" : ""}>Marketplace standard</option><option value="WHITE_LABEL" ${offre.offre === "WHITE_LABEL" ? "selected" : ""}>Site dédié</option></select></div><div class="champ"><label>Nombre maximal d’établissements</label><input name="max_etablissements" type="number" min="1" max="100" value="${Number(offre.max_etablissements || 1)}" required></div><label class="case"><input name="domaines_personnalises" type="checkbox" ${offre.domaines_personnalises ? "checked" : ""}> Autoriser les domaines personnalisés</label><div class="bande-info petit" style="margin:16px 0">Chaque établissement dispose de son propre thème, catalogue, panier et réglage IKMS.</div><button class="btn btn-primaire btn-bloc" id="sauver-offre">${icone("save")} Enregistrer l’offre</button></form>`;
+  document.querySelector("#offre-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const valeurs = Object.fromEntries(new FormData(form));
+    const button = document.querySelector("#sauver-offre");
+    boutonOccupe(button, true, "Enregistrement...");
+    const { error } = await supabase.rpc("rpc_admin_definir_offre_organisation", {
+      p_organisation_id: organisation.id,
+      p_offre: valeurs.offre,
+      p_max_etablissements: Number(valeurs.max_etablissements || 1),
+      p_domaines_personnalises: new FormData(form).has("domaines_personnalises"),
+    });
+    boutonOccupe(button, false);
+    if (error) return gererErreur(error);
+    toast("Offre mise a jour");
+    location.reload();
+  });
+  document.querySelector("#admin-dialog").showModal();
+  rafraichirIcones(document.querySelector("#admin-dialog-zone"));
 }
 
 function ouvrirTenant(donnees) {
@@ -177,6 +206,20 @@ function afficherBoutiques(donnees) {
     toast("Boutique mise a jour");
     afficherBoutiques(donnees);
   }));
+  if (donnees.domaines.length) {
+    zone.insertAdjacentHTML("beforeend", `<section class="section"><div class="entete-page"><div><h2>Domaines des Sites dédiés</h2><p class="muted petit">Vérification et choix du domaine principal.</p></div></div><div class="table-wrap"><table><thead><tr><th>Domaine</th><th>Établissement</th><th>Statut</th><th></th></tr></thead><tbody>${donnees.domaines.map((domaine) => `<tr><td><strong>${escapeHtml(domaine.domaine)}</strong>${domaine.principal ? '<p class="muted petit" style="margin:3px 0">Principal</p>' : ""}</td><td>${escapeHtml(domaine.boutiques?.nom || "")}</td><td>${badgeStatut(domaine.statut)}</td><td><button class="btn btn-secondaire" data-verifier-domaine="${domaine.id}" data-verifie="${domaine.statut === "VERIFIE"}">${domaine.statut === "VERIFIE" ? "Retirer la vérification" : "Vérifier et rendre principal"}</button></td></tr>`).join("")}</tbody></table></div></section>`);
+    zone.querySelectorAll("[data-verifier-domaine]").forEach((button) => button.addEventListener("click", async () => {
+      const verifie = button.dataset.verifie !== "true";
+      const { error } = await supabase.rpc("rpc_admin_verifier_domaine_boutique", {
+        p_domaine_id: button.dataset.verifierDomaine,
+        p_verifie: verifie,
+        p_principal: verifie,
+      });
+      if (error) return gererErreur(error);
+      toast(verifie ? "Domaine vérifié" : "Vérification retirée");
+      location.reload();
+    }));
+  }
   rafraichirIcones(zone);
 }
 

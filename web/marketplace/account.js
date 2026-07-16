@@ -14,10 +14,11 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js?v=8";
+} from "../assets/api.js?v=9";
 import {
   app,
   badgeStatut,
+  boutiqueContexteId,
   brancherAjoutsPanier,
   brancherFavoris,
   carteProduit,
@@ -26,7 +27,7 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js?v=8";
+} from "./shared.js?v=9";
 
 function rendreAuthentification() {
   const modeInitial = new URLSearchParams(location.search).get("mode") === "inscription" ? "inscription" : "connexion";
@@ -73,9 +74,14 @@ function rendreAuthentification() {
 }
 
 async function chargerCompte() {
+  let achatsRequete = supabase.from("achats")
+    .select("id, boutique_contexte_id, reference, statut_paiement, mode_paiement, sous_total, frais_livraison, total, cree_le, adresses_livraison(libelle, destinataire_nom, telephone, adresse, commune, indications, code_zone), commandes_marketplace(id, reference, statut, sous_total, frais_livraison, total, note_client, motif_annulation, cree_le, boutiques(id, nom, logo_url), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, source, cree_le), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_livraison, derniere_synchronisation, derniere_erreur))")
+    .eq("acheteur_id", etat.session.user.id)
+    .order("cree_le", { ascending: false });
+  if (boutiqueContexteId()) achatsRequete = achatsRequete.eq("boutique_contexte_id", boutiqueContexteId());
   const [profil, achats, adresses, favoris, liens, administrateur] = await Promise.all([
     supabase.from("identites").select("*").eq("id", etat.session.user.id).single(),
-    supabase.from("achats").select("id, reference, statut_paiement, mode_paiement, sous_total, frais_livraison, total, cree_le, adresses_livraison(libelle, destinataire_nom, telephone, adresse, commune, indications, code_zone), commandes_marketplace(id, reference, statut, sous_total, frais_livraison, total, note_client, motif_annulation, cree_le, boutiques(id, nom, logo_url), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, source, cree_le), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_livraison, derniere_synchronisation, derniere_erreur))").eq("acheteur_id", etat.session.user.id).order("cree_le", { ascending: false }),
+    achatsRequete,
     supabase.from("adresses_livraison").select("*").eq("identite_id", etat.session.user.id).order("principale", { ascending: false }).order("cree_le", { ascending: false }),
     supabase.from("favoris_marketplace").select("produit_id, produits(id, boutique_id, categorie_id, nom, slug, description, marque, prix, prix_barre, images, statut, cree_le, boutiques(id, nom, slug, logo_url, statut), variantes_produit(id, nom, prix, actif, stocks(quantite)), avis_produits(note))").eq("identite_id", etat.session.user.id),
     supabase.from("membres_organisation").select("role, statut, organisations(id, nom, type)").eq("identite_id", etat.session.user.id).eq("statut", "ACTIF"),
@@ -87,7 +93,8 @@ async function chargerCompte() {
     profil: profil.data || {},
     achats: achats.data || [],
     adresses: adresses.data || [],
-    favoris: (favoris.data || []).map((favori) => favori.produits).filter(Boolean).map(normaliserProduit),
+    favoris: (favoris.data || []).map((favori) => favori.produits).filter(Boolean).map(normaliserProduit)
+      .filter((produit) => !boutiqueContexteId() || produit.boutique_id === boutiqueContexteId()),
     organisations: (liens.data || []).map((lien) => ({ ...lien.organisations, role: lien.role })),
     administrateur: administrateur.data || null,
   };

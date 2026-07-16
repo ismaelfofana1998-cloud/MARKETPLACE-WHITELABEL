@@ -13,21 +13,103 @@ import {
   supabase,
   tonaliteStatut,
   toast,
-} from "../assets/api.js?v=8";
+} from "../assets/api.js?v=9";
 
 export const app = document.querySelector("#market-app");
 export const etat = {
   session: null,
   configuration: null,
   panier: 0,
+  vitrine: null,
 };
 
 export async function initialiser() {
-  etat.configuration = await chargerConfiguration();
+  etat.vitrine = await resoudreVitrine();
+  const configurationPlateforme = await chargerConfiguration();
+  etat.configuration = etat.vitrine
+    ? configurationVitrine(configurationPlateforme, etat.vitrine)
+    : configurationPlateforme;
   appliquerTheme(etat.configuration);
+  appliquerIdentiteVitrine();
   etat.session = await chargerSession();
   etat.panier = await compterPanier();
+  installerContexteNavigation();
 }
+
+async function resoudreVitrine() {
+  if (!supabase) return null;
+  const slug = new URLSearchParams(location.search).get("site")?.trim().toLowerCase() || null;
+  const hoteGenerique = /^(?:localhost|127\.0\.0\.1|.+\.github\.io)$/i.test(location.hostname);
+  const hote = slug || hoteGenerique ? null : (location.hostname || null);
+  const { data, error } = await supabase.rpc("rpc_resoudre_vitrine", {
+    p_slug: slug,
+    p_hote: hote,
+  });
+  if (error) {
+    throw new Error(`Résolution du Site dédié impossible : ${error.message}`);
+  }
+  if (!data && (slug || hote)) throw new Error("Ce Site dédié est introuvable ou indisponible.");
+  return data || null;
+}
+
+function configurationVitrine(plateforme, vitrine) {
+  const boutique = vitrine.boutique || {};
+  const configuration = vitrine.configuration || {};
+  return {
+    ...plateforme,
+    ...configuration,
+    nom: configuration.nom_site || boutique.nom || plateforme.nom,
+    slogan: configuration.slogan || configuration.annonce || boutique.description || plateforme.slogan,
+    description: configuration.description || boutique.description || plateforme.description,
+    logo_url: configuration.logo_url || boutique.logo_url || plateforme.logo_url,
+    hero_image_url: configuration.hero_images?.find(Boolean) || boutique.banniere_url || plateforme.hero_image_url,
+    hero_images: configuration.hero_images?.length
+      ? configuration.hero_images
+      : [boutique.banniere_url || plateforme.hero_image_url].filter(Boolean),
+    email_support: configuration.email_support || plateforme.email_support,
+    telephone_support: configuration.telephone_support || boutique.telephone || plateforme.telephone_support,
+  };
+}
+
+function appliquerIdentiteVitrine() {
+  if (!etat.vitrine) return;
+  document.body.dataset.vitrine = "site-dedie";
+  const configuration = etat.configuration;
+  if (configuration.seo_titre || configuration.nom) document.title = configuration.seo_titre || configuration.nom;
+  const description = document.querySelector('meta[name="description"]');
+  if (description && (configuration.seo_description || configuration.description)) {
+    description.content = configuration.seo_description || configuration.description;
+  }
+  if (configuration.favicon_url) {
+    let favicon = document.querySelector('link[rel="icon"]');
+    if (!favicon) {
+      favicon = document.createElement("link");
+      favicon.rel = "icon";
+      document.head.append(favicon);
+    }
+    favicon.href = configuration.favicon_url;
+  }
+}
+
+function installerContexteNavigation() {
+  if (!etat.vitrine || document.documentElement.dataset.contexteSiteInstalle) return;
+  document.documentElement.dataset.contexteSiteInstalle = "1";
+  document.addEventListener("click", (event) => {
+    const lien = event.target.closest("a[href]");
+    if (!lien || event.defaultPrevented || lien.target === "_blank" || lien.hasAttribute("download")) return;
+    try {
+      const url = new URL(lien.href, location.href);
+      if (url.origin !== location.origin || !/(?:index|produit|panier|checkout|compte)\.html$/.test(url.pathname)) return;
+      if (!url.searchParams.has("site")) url.searchParams.set("site", etat.vitrine.boutique.slug);
+      lien.href = url.href;
+    } catch {
+      // Lien non navigable.
+    }
+  }, true);
+}
+
+export const estSiteDedie = () => Boolean(etat.vitrine?.boutique?.id);
+export const boutiqueContexteId = () => etat.vitrine?.boutique?.id || null;
 
 export function ecranConfiguration() {
   app.innerHTML = `<main class="conteneur conteneur-etroit">
@@ -69,12 +151,18 @@ export function coquille(contenu, options = {}) {
   const recherche = new URLSearchParams(location.search).get("q") || "";
   const prenom = etat.session?.user?.user_metadata?.prenom || etat.session?.user?.email?.split("@")[0] || "Compte";
   const nomApplication = configuration.nom || "IKIGAI Market";
+  const siteDedie = estSiteDedie();
+  const masquerAutresBoutiques = siteDedie && configuration.masquer_autres_boutiques !== false;
+  const annonce = siteDedie && configuration.annonce
+    ? `<div class="annonce-site-dedie">${escapeHtml(configuration.annonce)}</div>`
+    : "";
   const marque = `<a class="marque" href="./index.html">${logo}<span style="color:white">${escapeHtml(nomApplication.split(" ")[0] || "IKIGAI")}</span><span>${escapeHtml(nomApplication.split(" ").slice(1).join(" ") || "Market")}</span></a>`;
   const entete = mode === "boutique"
     ? `<div class="bandeau-ligne bandeau-commerce">
         ${marque}
         <form class="recherche-entete" id="recherche-entete" action="./index.html" role="search">
-          <input id="recherche-entete-input" name="q" type="search" maxlength="100" value="${escapeHtml(recherche)}" placeholder="Rechercher un produit, une marque ou une boutique" autocomplete="off" aria-label="Rechercher dans IKIGAI Market">
+          ${siteDedie ? `<input type="hidden" name="site" value="${escapeHtml(etat.vitrine.boutique.slug)}">` : ""}
+          <input id="recherche-entete-input" name="q" type="search" maxlength="100" value="${escapeHtml(recherche)}" placeholder="Rechercher dans ${escapeHtml(nomApplication)}" autocomplete="off" aria-label="Rechercher dans ${escapeHtml(nomApplication)}">
           <button type="submit" aria-label="Rechercher">${icone("search")}</button>
           <div class="suggestions-recherche masque" id="suggestions-recherche" role="listbox"></div>
         </form>
@@ -84,7 +172,7 @@ export function coquille(contenu, options = {}) {
           <a class="icone-btn panier-entete" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-cart")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}<strong>Panier</strong></a>
         </div>
       </div>
-      <div class="sous-navigation"><nav><a href="./index.html#categories">${icone("menu")} Categories</a><a href="./index.html#produits">Nouveautes</a><a href="./index.html#boutiques">Boutiques</a><a href="./marchand.html">Vendre sur IKIGAI</a></nav><span>Livraison suivie par IKIGAI</span></div>`
+      <div class="sous-navigation"><nav><a href="./index.html#categories">${icone("menu")} Categories</a><a href="./index.html#produits">Nouveautes</a>${masquerAutresBoutiques ? "" : '<a href="./index.html#boutiques">Boutiques</a><a href="./marchand.html">Vendre sur IKIGAI</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
     : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}<div class="bandeau-actions"><a class="icone-btn" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-bag")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}</a><a class="icone-btn" href="${compteLien}" title="Compte" aria-label="Compte">${icone(etat.session ? "circle-user-round" : "log-in")}</a></div></div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">
@@ -97,6 +185,7 @@ export function coquille(contenu, options = {}) {
 
   app.innerHTML = `<div class="app">
     <header class="bandeau">
+      ${annonce}
       ${entete}
     </header>
     ${contenu}
@@ -131,12 +220,14 @@ function brancherRechercheEntete() {
     if (recherche.length < 2) return fermer();
     const numero = ++requeteCourante;
     minuteur = setTimeout(async () => {
-      const { data, error } = await supabase.rpc("rpc_rechercher_produits_marketplace", {
-        p_recherche: recherche,
-        p_tri: "PERTINENCE",
-        p_page: 1,
-        p_par_page: 6,
-      });
+      const { data, error } = estSiteDedie()
+        ? await supabase.rpc("rpc_rechercher_produits_vitrine", {
+            p_boutique_id: boutiqueContexteId(), p_recherche: recherche,
+            p_tri: "PERTINENCE", p_page: 1, p_par_page: 6,
+          })
+        : await supabase.rpc("rpc_rechercher_produits_marketplace", {
+            p_recherche: recherche, p_tri: "PERTINENCE", p_page: 1, p_par_page: 6,
+          });
       if (numero !== requeteCourante || error) return fermer();
       suggestions.innerHTML = data?.length
         ? data.map((produit) => `<a href="./produit.html?id=${produit.id}" role="option"><img src="${escapeHtml(imageProduit(produit))}" alt=""><span><strong>${escapeHtml(produit.nom)}</strong><small>${escapeHtml(produit.boutique_nom)} - ${fcfa(produit.prix)}</small></span></a>`).join("")
@@ -152,11 +243,15 @@ function brancherRechercheEntete() {
 
 export async function compterPanier() {
   if (!supabase || !etat.session) return 0;
-  const { data } = await supabase
+  let requete = supabase
     .from("lignes_panier")
-    .select("quantite, paniers!inner(identite_id, statut)")
+    .select("quantite, paniers!inner(identite_id, statut, boutique_contexte_id)")
     .eq("paniers.identite_id", etat.session.user.id)
     .eq("paniers.statut", "ACTIF");
+  requete = boutiqueContexteId()
+    ? requete.eq("paniers.boutique_contexte_id", boutiqueContexteId())
+    : requete.is("paniers.boutique_contexte_id", null);
+  const { data } = await requete;
   return (data || []).reduce((total, ligne) => total + Number(ligne.quantite || 0), 0);
 }
 
@@ -164,7 +259,7 @@ export async function actualiserCompteurPanier() {
   etat.panier = await compterPanier();
   document.querySelectorAll(".compteur").forEach((element) => element.remove());
   if (!etat.panier) return;
-  document.querySelectorAll('a[href="./panier.html"] .lucide-shopping-bag').forEach((iconePanier) => {
+  document.querySelectorAll('a[href*="panier.html"] .lucide-shopping-bag, a[href*="panier.html"] .lucide-shopping-cart').forEach((iconePanier) => {
     iconePanier.parentElement.insertAdjacentHTML("beforeend", `<span class="compteur">${etat.panier}</span>`);
   });
 }
@@ -180,6 +275,23 @@ export async function exigerConnexion(retour = location.pathname + location.sear
 }
 
 export async function chargerCategories() {
+  if (estSiteDedie()) {
+    const { data: categoriesBoutique, error: erreurBoutique } = await supabase
+      .from("categories_boutique")
+      .select("id, nom, slug, description, image_url, ordre")
+      .eq("boutique_id", boutiqueContexteId())
+      .eq("actif", true)
+      .order("ordre")
+      .order("nom");
+    if (erreurBoutique) throw erreurBoutique;
+    if (etat.configuration.masquer_categories_globales !== false) return categoriesBoutique || [];
+    const categoriesGlobales = await chargerCategoriesGlobales();
+    return [...(categoriesBoutique || []), ...categoriesGlobales];
+  }
+  return chargerCategoriesGlobales();
+}
+
+async function chargerCategoriesGlobales() {
   let { data, error } = await supabase
     .from("categories_marketplace")
     .select("id, parent_id, nom, slug, description, image_url, ordre")
@@ -222,10 +334,9 @@ export function normaliserProduit(produit) {
 }
 
 export async function chargerProduits(filtres = {}) {
-  const { data, error } = await supabase.rpc("rpc_rechercher_produits_marketplace", {
+  const parametres = {
     p_recherche: filtres.recherche || null,
     p_categorie_id: filtres.categorieId || null,
-    p_boutique_id: filtres.boutiqueId || null,
     p_prix_min: Number.isFinite(filtres.prixMin) ? filtres.prixMin : null,
     p_prix_max: Number.isFinite(filtres.prixMax) ? filtres.prixMax : null,
     p_note_min: Number.isFinite(filtres.noteMin) ? filtres.noteMin : null,
@@ -233,7 +344,16 @@ export async function chargerProduits(filtres = {}) {
     p_tri: filtres.tri || "PERTINENCE",
     p_page: filtres.page || 1,
     p_par_page: filtres.parPage || filtres.limit || 24,
-  });
+  };
+  const { data, error } = estSiteDedie()
+    ? await supabase.rpc("rpc_rechercher_produits_vitrine", {
+        ...parametres,
+        p_boutique_id: boutiqueContexteId(),
+      })
+    : await supabase.rpc("rpc_rechercher_produits_marketplace", {
+        ...parametres,
+        p_boutique_id: filtres.boutiqueId || null,
+      });
   if (error) throw error;
   const produits = (data || []).map((produit) => ({
     ...produit,
@@ -288,7 +408,11 @@ export function brancherAjoutsPanier(racine) {
       const varianteId = button.dataset.ajouterPanier;
       if (!varianteId) return;
       button.disabled = true;
-      const { error } = await supabase.rpc("rpc_ajouter_au_panier", { p_variante_id: varianteId, p_quantite: 1 });
+      const { error } = await supabase.rpc("rpc_ajouter_au_panier", {
+        p_variante_id: varianteId,
+        p_quantite: 1,
+        p_boutique_contexte_id: boutiqueContexteId(),
+      });
       button.disabled = false;
       if (error) return gererErreur(error);
       await actualiserCompteurPanier();

@@ -13,7 +13,7 @@ import {
   supabase,
   televerserImage,
   toast,
-} from "../assets/api.js?v=8";
+} from "../assets/api.js?v=9";
 import {
   app,
   badgeStatut,
@@ -22,7 +22,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=8";
+} from "./shared.js?v=9";
 
 let canalCommandes = null;
 
@@ -72,28 +72,38 @@ function afficherOnboarding() {
   rafraichirIcones(app);
 }
 
-async function chargerEspace(organisation) {
-  const boutiqueResultat = await supabase.from("boutiques").select("*").eq("organisation_id", organisation.id).maybeSingle();
+async function chargerEspace(organisation, boutiqueId = null) {
+  const boutiqueResultat = await supabase.from("boutiques").select("*").eq("organisation_id", organisation.id).order("cree_le");
   if (boutiqueResultat.error) throw boutiqueResultat.error;
-  if (!boutiqueResultat.data) return { boutique: null };
-  const boutique = boutiqueResultat.data;
+  const boutiques = boutiqueResultat.data || [];
+  if (!boutiques.length) return { boutique: null, boutiques: [] };
+  const boutique = boutiques.find((element) => element.id === boutiqueId) || boutiques[0];
   await supabase.functions.invoke("sync-livraisons", { body: {} }).catch(() => null);
-  const [produits, commandes, categories, membres, integration] = await Promise.all([
-    supabase.from("produits").select("id, boutique_id, categorie_id, nom, description, marque, prix, prix_barre, images, statut, cree_le, variantes_produit(id, nom, sku, actif, stocks(quantite, seuil_alerte))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }),
+  const [produits, commandes, categories, categoriesBoutique, membres, integration, offre, configurationSite, domaines] = await Promise.all([
+    supabase.from("produits").select("id, boutique_id, categorie_id, categorie_boutique_id, nom, description, marque, prix, prix_barre, images, statut, cree_le, variantes_produit(id, nom, sku, actif, stocks(quantite, seuil_alerte))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }),
     supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications, code_zone)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, source, cree_le), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_ramassage, code_livraison, montant_livraison, derniere_synchronisation, derniere_erreur))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
     supabase.from("categories_marketplace").select("id, nom").eq("actif", true).order("ordre"),
+    supabase.from("categories_boutique").select("id, boutique_id, nom, slug, description, image_url, ordre, actif").eq("boutique_id", boutique.id).order("ordre").order("nom"),
     supabase.from("membres_organisation").select("identite_id, role, statut, identites(prenom, nom, email)").eq("organisation_id", organisation.id).order("cree_le"),
-    supabase.from("integrations_livraison").select("organisation_id, code_entreprise_livraison, zone_depart, expediteur_nom, expediteur_tel, expediteur_adresse, mode_paiement, cle_api_configuree, actif, derniere_verification, derniere_erreur, modifie_le").eq("organisation_id", organisation.id).maybeSingle(),
+    supabase.from("integrations_ikms_boutique").select("boutique_id, zone_depart, expediteur_nom, expediteur_tel, expediteur_adresse, mode_paiement, cle_api_configuree, actif, derniere_verification, derniere_erreur, modifie_le").eq("boutique_id", boutique.id).maybeSingle(),
+    supabase.from("offres_organisations").select("offre, white_label_actif, domaines_personnalises, max_etablissements, active").eq("organisation_id", organisation.id).maybeSingle(),
+    supabase.from("configurations_boutique").select("*").eq("boutique_id", boutique.id).maybeSingle(),
+    supabase.from("domaines_boutique").select("id, boutique_id, domaine, statut, principal, jeton_verification, verifie_le").eq("boutique_id", boutique.id).order("principal", { ascending: false }),
   ]);
-  const erreur = [produits.error, commandes.error, categories.error, membres.error, integration.error].find(Boolean);
+  const erreur = [produits.error, commandes.error, categories.error, categoriesBoutique.error, membres.error, integration.error, offre.error, configurationSite.error, domaines.error].find(Boolean);
   if (erreur) throw erreur;
   return {
     boutique,
+    boutiques,
     produits: produits.data || [],
     commandes: commandes.data || [],
     categories: categories.data || [],
+    categoriesBoutique: categoriesBoutique.data || [],
     membres: membres.data || [],
     integration: integration.data,
+    offre: offre.data || { offre: "STANDARD", max_etablissements: 1 },
+    configurationSite: configurationSite.data,
+    domaines: domaines.data || [],
   };
 }
 
@@ -124,7 +134,8 @@ export async function rendreMarchand() {
     if (!organisations.length) { afficherOnboarding(); return; }
     const organisationId = new URLSearchParams(location.search).get("organisation") || organisations[0].id;
     const organisation = organisations.find((element) => element.id === organisationId) || organisations[0];
-    const donnees = await chargerEspace(organisation);
+    const boutiqueId = new URLSearchParams(location.search).get("boutique");
+    const donnees = await chargerEspace(organisation, boutiqueId);
     if (!donnees.boutique) { afficherCreationBoutique(organisation); return; }
     afficherTableauMarchand(organisations, organisation, donnees, adminPlateforme);
   } catch (error) {
@@ -148,9 +159,16 @@ function afficherTableauMarchand(organisations, organisation, donnees, adminPlat
   const totalCA = donnees.commandes.filter((commande) => commande.statut !== "ANNULEE").reduce((total, commande) => total + Number(commande.total || 0), 0);
   const nouvelles = donnees.commandes.filter((commande) => ["NOUVELLE", "CONFIRMEE", "EN_PREPARATION"].includes(commande.statut)).length;
   const stockFaible = donnees.produits.filter((produit) => stockProduit(produit) <= 5).length;
-  const navigation = `<nav class="navigation-desktop"><a href="./marchand.html#apercu" class="actif">Gestion</a><a href="./index.html">Voir le site</a><a href="../identity/index.html#equipe">Equipe</a>${adminPlateforme ? '<a href="./admin.html#tableau">Administration</a>' : ""}</nav>`;
-  coquille(`<main class="conteneur"><div class="entete-page"><div><p class="muted petit">${escapeHtml(organisation.role)}</p><h1>${escapeHtml(donnees.boutique.nom)}</h1><p class="muted">Boutique ${escapeHtml(donnees.boutique.statut.toLowerCase())}</p></div><div class="entete-page-actions">${organisations.length > 1 ? `<select id="organisation-select" class="btn btn-secondaire">${organisations.map((element) => `<option value="${element.id}" ${element.id === organisation.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>` : ""}<a class="btn btn-secondaire" href="./index.html?boutique=${donnees.boutique.id}#produits">${icone("external-link")} Voir la boutique</a></div></div><div class="kpis"><div class="stat"><span class="muted petit">Commandes</span><strong>${donnees.commandes.length}</strong></div><div class="stat"><span class="muted petit">A traiter</span><strong>${nouvelles}</strong></div><div class="stat"><span class="muted petit">Stock faible</span><strong>${stockFaible}</strong></div><div class="stat"><span class="muted petit">Ventes</span><strong>${fcfa(totalCA)}</strong></div></div><div class="mise-en-page" style="margin-top:24px"><nav class="menu-lateral"><button class="actif" data-mtab="apercu">${icone("layout-dashboard")} Apercu</button><button data-mtab="commandes">${icone("package-check")} Commandes ${nouvelles ? `<span class="badge badge-attention">${nouvelles}</span>` : ""}</button>${gestionnaire ? `<button data-mtab="produits">${icone("package")} Produits</button>` : ""}${administrateur ? `<button data-mtab="equipe">${icone("users")} Equipe</button><button data-mtab="boutique">${icone("store")} Boutique</button><button data-mtab="livraison">${icone("truck")} Livraison</button>` : ""}</nav><section id="marchand-zone"></section></div></main><dialog class="dialogue" id="marchand-dialog"><div class="dialogue-entete"><h2 id="dialog-title"></h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="dialog-zone"></div></dialog>`, { mode: "gestion", espace: "Espace marchand", navigation });
+  const siteDedie = donnees.offre.offre === "WHITE_LABEL" && donnees.offre.white_label_actif;
+  const urlPublique = siteDedie && donnees.boutique.mode_vitrine === "WHITE_LABEL"
+    ? `./index.html?site=${encodeURIComponent(donnees.boutique.slug)}`
+    : `./index.html?boutique=${donnees.boutique.id}#produits`;
+  const peutAjouter = administrateur && donnees.boutiques.length < Number(donnees.offre.max_etablissements || 1);
+  const navigation = `<nav class="navigation-desktop"><a href="./marchand.html#apercu" class="actif">Gestion</a><a href="${urlPublique}">Voir le site</a><a href="../identity/index.html#equipe">Equipe</a>${adminPlateforme ? '<a href="./admin.html#tableau">Administration</a>' : ""}</nav>`;
+  coquille(`<main class="conteneur"><div class="entete-page"><div><p class="muted petit">${escapeHtml(organisation.role)} · ${siteDedie ? "Site dédié" : "Marketplace"}</p><h1>${escapeHtml(donnees.boutique.nom)}</h1><p class="muted">Établissement ${escapeHtml(donnees.boutique.statut.toLowerCase())}</p></div><div class="entete-page-actions">${organisations.length > 1 ? `<select id="organisation-select" class="btn btn-secondaire">${organisations.map((element) => `<option value="${element.id}" ${element.id === organisation.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>` : ""}<select id="boutique-select" class="btn btn-secondaire" aria-label="Établissement">${donnees.boutiques.map((element) => `<option value="${element.id}" ${element.id === donnees.boutique.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>${peutAjouter ? `<button class="btn btn-secondaire" id="ajouter-établissement">${icone("plus")} Établissement</button>` : ""}<a class="btn btn-secondaire" href="${urlPublique}">${icone("external-link")} Voir le site</a></div></div><div class="kpis"><div class="stat"><span class="muted petit">Commandes</span><strong>${donnees.commandes.length}</strong></div><div class="stat"><span class="muted petit">A traiter</span><strong>${nouvelles}</strong></div><div class="stat"><span class="muted petit">Stock faible</span><strong>${stockFaible}</strong></div><div class="stat"><span class="muted petit">Ventes</span><strong>${fcfa(totalCA)}</strong></div></div><div class="mise-en-page" style="margin-top:24px"><nav class="menu-lateral"><button class="actif" data-mtab="apercu">${icone("layout-dashboard")} Apercu</button><button data-mtab="commandes">${icone("package-check")} Commandes ${nouvelles ? `<span class="badge badge-attention">${nouvelles}</span>` : ""}</button>${gestionnaire ? `<button data-mtab="produits">${icone("package")} Produits</button>` : ""}${administrateur ? `<button data-mtab="equipe">${icone("users")} Equipe</button><button data-mtab="boutique">${icone("store")} Établissement</button>${siteDedie ? `<button data-mtab="site-dedie">${icone("palette")} Site dédié</button>` : ""}<button data-mtab="livraison">${icone("truck")} Livraison</button>` : ""}</nav><section id="marchand-zone"></section></div></main><dialog class="dialogue" id="marchand-dialog"><div class="dialogue-entete"><h2 id="dialog-title"></h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="dialog-zone"></div></dialog>`, { mode: "gestion", espace: "Espace marchand", navigation });
   document.querySelector("#organisation-select")?.addEventListener("change", (event) => { location.href = `./marchand.html?organisation=${event.target.value}${location.hash}`; });
+  document.querySelector("#boutique-select")?.addEventListener("change", (event) => { location.href = `./marchand.html?organisation=${organisation.id}&boutique=${event.target.value}${location.hash}`; });
+  document.querySelector("#ajouter-établissement")?.addEventListener("click", () => ouvrirNouvelEtablissement(organisation));
   document.querySelectorAll("[data-fermer]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
   const onglets = {
     apercu: () => afficherApercu(donnees, nouvelles, stockFaible),
@@ -158,7 +176,8 @@ function afficherTableauMarchand(organisations, organisation, donnees, adminPlat
     produits: () => afficherProduits(donnees),
     equipe: () => afficherEquipe(organisation, donnees),
     boutique: () => afficherBoutique(donnees),
-    livraison: () => afficherLivraison(organisation, donnees),
+    "site-dedie": () => afficherSiteDedie(donnees),
+    livraison: () => afficherLivraison(donnees),
   };
   const afficherOnglet = (nom, memoriser = false) => {
     const onglet = onglets[nom] && document.querySelector(`[data-mtab="${nom}"]`) ? nom : "apercu";
@@ -171,6 +190,29 @@ function afficherTableauMarchand(organisations, organisation, donnees, adminPlat
   afficherOnglet(ongletDepuisUrl(Object.keys(onglets), "apercu"));
   abonnerCommandes(donnees.boutique.id);
   rafraichirIcones(app);
+}
+
+function ouvrirNouvelEtablissement(organisation) {
+  document.querySelector("#dialog-title").textContent = "Nouvel établissement";
+  document.querySelector("#dialog-zone").innerHTML = `<form id="établissement-form"><div class="champ"><label>Nom</label><input name="nom" minlength="2" maxlength="120" required></div><div class="champ"><label>Adresse web du Site dédié</label><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required><span class="champ-aide">Exemple : soum-cosmetique-abidjan</span></div><button class="btn btn-primaire btn-bloc">${icone("plus")} Creer l'établissement</button></form>`;
+  const nom = document.querySelector('#établissement-form [name="nom"]');
+  const slug = document.querySelector('#établissement-form [name="slug"]');
+  let modifie = false;
+  slug.addEventListener("input", () => { modifie = true; });
+  nom.addEventListener("input", () => { if (!modifie) slug.value = slugifier(nom.value); });
+  document.querySelector("#établissement-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const valeurs = Object.fromEntries(new FormData(event.currentTarget));
+    const { data, error } = await supabase.rpc("rpc_creer_boutique_marketplace", {
+      p_organisation_id: organisation.id,
+      p_nom: valeurs.nom,
+      p_slug: valeurs.slug,
+    });
+    if (error) return gererErreur(error);
+    location.href = `./marchand.html?organisation=${organisation.id}&boutique=${data}#site-dedie`;
+  });
+  document.querySelector("#marchand-dialog").showModal();
+  rafraichirIcones(document.querySelector("#dialog-zone"));
 }
 
 function afficherApercu(donnees, nouvelles, stockFaible) {
@@ -258,8 +300,15 @@ function afficherProduits(donnees) {
 
 function ouvrirProduit(donnees, produit) {
   const stock = produit ? stockProduit(produit) : 0;
+  const categorieSelectionnee = produit?.categorie_boutique_id
+    ? `SITE:${produit.categorie_boutique_id}`
+    : (produit?.categorie_id ? `GLOBAL:${produit.categorie_id}` : "");
+  const optionsCategories = [
+    ...donnees.categoriesBoutique.map((categorie) => ({ ...categorie, valeur: `SITE:${categorie.id}`, groupe: "Catégories du Site dédié" })),
+    ...donnees.categories.map((categorie) => ({ ...categorie, valeur: `GLOBAL:${categorie.id}`, groupe: "Categories marketplace" })),
+  ];
   document.querySelector("#dialog-title").textContent = produit ? "Modifier le produit" : "Nouveau produit";
-  document.querySelector("#dialog-zone").innerHTML = `<form id="produit-form"><div class="champ"><label>Nom</label><input name="nom" minlength="2" maxlength="160" value="${escapeHtml(produit?.nom)}" required><span class="champ-aide">2 a 160 caracteres.</span></div><div class="grille-deux"><div class="champ"><label>Marque</label><input name="marque" maxlength="100" value="${escapeHtml(produit?.marque)}"></div><div class="champ"><label>Categorie</label><select name="categorie_id"><option value="">Sans categorie</option>${donnees.categories.map((categorie) => `<option value="${categorie.id}" ${categorie.id === produit?.categorie_id ? "selected" : ""}>${escapeHtml(categorie.nom)}</option>`).join("")}</select></div></div><div class="champ"><label>Description</label><textarea name="description" maxlength="5000">${escapeHtml(produit?.description)}</textarea><span class="champ-aide">5 000 caracteres maximum.</span></div><div class="grille-deux"><div class="champ"><label>Prix (FCFA)</label><input name="prix" type="number" min="1" max="2000000000" step="1" value="${produit?.prix ?? ""}" required></div><div class="champ"><label>Stock</label><input name="stock" type="number" min="0" max="1000000" step="1" value="${stock}" required></div></div><div class="champ"><label>Statut</label><select name="statut"><option value="ACTIF" ${produit?.statut === "ACTIF" ? "selected" : ""}>Actif</option><option value="BROUILLON" ${produit?.statut === "BROUILLON" ? "selected" : ""}>Brouillon</option><option value="EPUISE" ${produit?.statut === "EPUISE" ? "selected" : ""}>Epuise</option><option value="ARCHIVE" ${produit?.statut === "ARCHIVE" ? "selected" : ""}>Archive</option></select></div><div class="champ"><label>Photos</label><input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple><span class="champ-aide">6 images maximum, 5 Mo par image. Une photo est obligatoire pour publier.</span></div>${produit?.images?.length ? `<div class="ligne" style="overflow-x:auto">${produit.images.map((image) => `<img src="${escapeHtml(image)}" alt="" style="width:70px;height:70px;object-fit:cover;border-radius:6px">`).join("")}</div>` : ""}<button class="btn btn-primaire btn-bloc" id="sauver-produit" style="margin-top:17px">${icone("save")} Enregistrer le produit</button></form>`;
+  document.querySelector("#dialog-zone").innerHTML = `<form id="produit-form"><div class="champ"><label>Nom</label><input name="nom" minlength="2" maxlength="160" value="${escapeHtml(produit?.nom)}" required><span class="champ-aide">2 a 160 caracteres.</span></div><div class="grille-deux"><div class="champ"><label>Marque</label><input name="marque" maxlength="100" value="${escapeHtml(produit?.marque)}"></div><div class="champ"><label>Categorie</label><select name="categorie_id"><option value="">Sans categorie</option>${optionsCategories.map((categorie) => `<option value="${categorie.valeur}" ${categorie.valeur === categorieSelectionnee ? "selected" : ""}>${escapeHtml(categorie.nom)} · ${escapeHtml(categorie.groupe)}</option>`).join("")}</select></div></div><div class="champ"><label>Description</label><textarea name="description" maxlength="5000">${escapeHtml(produit?.description)}</textarea><span class="champ-aide">5 000 caracteres maximum.</span></div><div class="grille-deux"><div class="champ"><label>Prix (FCFA)</label><input name="prix" type="number" min="1" max="2000000000" step="1" value="${produit?.prix ?? ""}" required></div><div class="champ"><label>Stock</label><input name="stock" type="number" min="0" max="1000000" step="1" value="${stock}" required></div></div><div class="champ"><label>Statut</label><select name="statut"><option value="ACTIF" ${produit?.statut === "ACTIF" ? "selected" : ""}>Actif</option><option value="BROUILLON" ${produit?.statut === "BROUILLON" ? "selected" : ""}>Brouillon</option><option value="EPUISE" ${produit?.statut === "EPUISE" ? "selected" : ""}>Epuise</option><option value="ARCHIVE" ${produit?.statut === "ARCHIVE" ? "selected" : ""}>Archive</option></select></div><div class="champ"><label>Photos</label><input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple><span class="champ-aide">6 images maximum, 5 Mo par image. Une photo est obligatoire pour publier.</span></div>${produit?.images?.length ? `<div class="ligne" style="overflow-x:auto">${produit.images.map((image) => `<img src="${escapeHtml(image)}" alt="" style="width:70px;height:70px;object-fit:cover;border-radius:6px">`).join("")}</div>` : ""}<button class="btn btn-primaire btn-bloc" id="sauver-produit" style="margin-top:17px">${icone("save")} Enregistrer le produit</button></form>`;
   document.querySelector("#produit-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = document.querySelector("#sauver-produit");
@@ -275,13 +324,15 @@ function ouvrirProduit(donnees, produit) {
         ? await Promise.all(fichiers.map((fichier) => televerserImage(fichier, `${donnees.boutique.id}/produits`)))
         : (produit?.images || []);
       const publicationAutomatique = !produit && valeurs.statut === "ACTIF" && donnees.boutique.statut === "BROUILLON";
-      const { error } = await supabase.rpc("rpc_enregistrer_produit_marketplace", {
+      const [typeCategorie, categorieId] = String(valeurs.categorie_id || "").split(":");
+      const { error } = await supabase.rpc("rpc_enregistrer_produit_vitrine", {
         p_boutique_id: donnees.boutique.id,
         p_nom: valeurs.nom,
         p_prix: Number(valeurs.prix),
         p_stock: Number(valeurs.stock),
         p_produit_id: produit?.id || null,
-        p_categorie_id: valeurs.categorie_id || null,
+        p_categorie_id: typeCategorie === "GLOBAL" ? categorieId : null,
+        p_categorie_boutique_id: typeCategorie === "SITE" ? categorieId : null,
         p_description: valeurs.description || null,
         p_marque: valeurs.marque || null,
         p_images: images,
@@ -355,7 +406,94 @@ function afficherBoutique(donnees) {
   rafraichirIcones(zone);
 }
 
-function afficherLivraison(organisation, donnees) {
+function afficherSiteDedie(donnees) {
+  const zone = document.querySelector("#marchand-zone");
+  const boutique = donnees.boutique;
+  const configuration = donnees.configurationSite || {};
+  const filtres = configuration.filtres_actifs || { prix: true, note: true, stock: true, tri: true };
+  const heroes = Array.isArray(configuration.hero_images) && configuration.hero_images.length
+    ? configuration.hero_images
+    : [boutique.banniere_url].filter(Boolean);
+  zone.innerHTML = `<div class="entete-page"><div><h2>Site dédié</h2><p class="muted petit">Theme, bandeau, filtres et categories propres a cette URL.</p></div><a class="btn btn-secondaire" href="./index.html?site=${encodeURIComponent(boutique.slug)}" target="_blank" rel="noopener">${icone("external-link")} Ouvrir</a></div><form class="carte" id="site-dedie-form"><div class="grille-deux"><div class="champ"><label>Nom du site</label><input name="nom_site" maxlength="120" value="${escapeHtml(configuration.nom_site || boutique.nom)}" required></div><div class="champ"><label>Slogan</label><input name="slogan" maxlength="200" value="${escapeHtml(configuration.slogan)}"></div></div><div class="champ"><label>Annonce du bandeau</label><input name="annonce" maxlength="300" value="${escapeHtml(configuration.annonce)}"></div><div class="champ"><label>Description</label><textarea name="description" maxlength="2000">${escapeHtml(configuration.description || boutique.description)}</textarea></div><div class="grille-trois"><div class="champ"><label>Couleur principale</label><input name="couleur_primaire" type="color" value="${escapeHtml(configuration.couleur_primaire || "#C75332")}"></div><div class="champ"><label>Couleur secondaire</label><input name="couleur_secondaire" type="color" value="${escapeHtml(configuration.couleur_secondaire || "#17211F")}"></div><div class="champ"><label>Accent</label><input name="couleur_accent" type="color" value="${escapeHtml(configuration.couleur_accent || "#E9AE36")}"></div></div><div class="grille-deux"><div class="champ"><label>Logo du Site dédié</label><input name="logo" type="file" accept="image/jpeg,image/png,image/webp">${configuration.logo_url ? `<img src="${escapeHtml(configuration.logo_url)}" alt="" style="width:84px;height:84px;object-fit:contain">` : ""}</div><div class="champ"><label>Images du bandeau</label><input name="heroes" type="file" accept="image/jpeg,image/png,image/webp" multiple><span class="champ-aide">Jusqu'a 6 images. Une nouvelle selection remplace le bandeau.</span></div></div>${heroes.length ? `<div class="galerie-bandeau-admin">${heroes.map((image) => `<div class="media-admin media-admin-bandeau"><img src="${escapeHtml(image)}" alt=""></div>`).join("")}</div>` : ""}<div class="grille-deux"><div><h3>Contenu visible</h3><label class="case"><input name="masquer_autres_boutiques" type="checkbox" ${configuration.masquer_autres_boutiques !== false ? "checked" : ""}> Masquer les autres boutiques</label><label class="case"><input name="masquer_categories_globales" type="checkbox" ${configuration.masquer_categories_globales !== false ? "checked" : ""}> Masquer les categories marketplace</label><label class="case"><input name="afficher_signature_plateforme" type="checkbox" ${configuration.afficher_signature_plateforme ? "checked" : ""}> Afficher la signature IKIGAI</label></div><div><h3>Filtres actifs</h3>${["prix", "note", "stock", "tri"].map((cle) => `<label class="case"><input name="filtre_${cle}" type="checkbox" ${filtres[cle] !== false ? "checked" : ""}> ${escapeHtml({ prix: "Prix", note: "Avis", stock: "Disponibilité", tri: "Tri" }[cle])}</label>`).join("")}</div></div><div class="grille-deux"><div class="champ"><label>Titre SEO</label><input name="seo_titre" maxlength="160" value="${escapeHtml(configuration.seo_titre)}"></div><div class="champ"><label>Description SEO</label><input name="seo_description" maxlength="300" value="${escapeHtml(configuration.seo_description)}"></div></div><button class="btn btn-primaire" id="sauver-site-dedie">${icone("save")} Enregistrer le Site dédié</button></form><section class="section"><div class="entete-page"><div><h2>Categories du Site dédié</h2><p class="muted petit">Elles sont propres a cet établissement.</p></div></div><form class="carte ligne" id="categorie-site-form"><input name="nom" minlength="2" maxlength="120" placeholder="Nouvelle categorie" required><input name="image_url" type="url" placeholder="URL image (facultatif)"><button class="btn btn-primaire">${icone("plus")} Ajouter</button></form><div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Categorie</th><th>Adresse</th><th>Statut</th><th></th></tr></thead><tbody>${donnees.categoriesBoutique.map((categorie) => `<tr><td><strong>${escapeHtml(categorie.nom)}</strong></td><td>${escapeHtml(categorie.slug)}</td><td>${badgeStatut(categorie.actif ? "ACTIF" : "SUSPENDUE")}</td><td><button class="btn btn-secondaire" data-basculer-categorie="${categorie.id}" data-actif="${categorie.actif}">${categorie.actif ? "Masquer" : "Afficher"}</button></td></tr>`).join("") || '<tr><td colspan="4" class="muted">Aucune categorie propre.</td></tr>'}</tbody></table></div></section>${donnees.offre.domaines_personnalises ? `<section class="section"><div class="entete-page"><div><h2>Domaines personnalises</h2><p class="muted petit">Ajoute le domaine, puis communique le jeton de verification au support.</p></div></div><form class="carte ligne" id="domaine-form"><input name="domaine" placeholder="boutique.exemple.com" required><button class="btn btn-primaire">${icone("globe-2")} Ajouter</button></form><div class="pile" style="margin-top:14px">${donnees.domaines.map((domaine) => `<div class="carte"><div class="ligne-entre"><strong>${escapeHtml(domaine.domaine)}</strong>${badgeStatut(domaine.statut)}</div><p class="petit muted" style="word-break:break-all">Jeton : ${escapeHtml(domaine.jeton_verification)}</p></div>`).join("") || '<p class="muted">Aucun domaine ajoute.</p>'}</div></section>` : ""}`;
+
+  zone.querySelector("#site-dedie-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = zone.querySelector("#sauver-site-dedie");
+    const valeurs = Object.fromEntries(new FormData(form));
+    boutonOccupe(button, true, "Enregistrement...");
+    try {
+      const logo = form.elements.logo.files[0]
+        ? await televerserImage(form.elements.logo.files[0], `${boutique.id}/site-dedie`)
+        : (configuration.logo_url || boutique.logo_url);
+      const fichiers = [...form.elements.heroes.files];
+      if (fichiers.length > 6) throw new Error("Le bandeau accepte 6 images maximum.");
+      const heroImages = fichiers.length
+        ? await Promise.all(fichiers.map((fichier) => televerserImage(fichier, `${boutique.id}/site-dedie/bandeau`)))
+        : heroes;
+      const formulaire = new FormData(form);
+      const payload = {
+        boutique_id: boutique.id,
+        nom_site: valeurs.nom_site,
+        slogan: valeurs.slogan || null,
+        annonce: valeurs.annonce || null,
+        description: valeurs.description || null,
+        logo_url: logo || null,
+        hero_images: heroImages,
+        couleur_primaire: valeurs.couleur_primaire,
+        couleur_secondaire: valeurs.couleur_secondaire,
+        couleur_accent: valeurs.couleur_accent,
+        masquer_autres_boutiques: formulaire.has("masquer_autres_boutiques"),
+        masquer_categories_globales: formulaire.has("masquer_categories_globales"),
+        afficher_signature_plateforme: formulaire.has("afficher_signature_plateforme"),
+        filtres_actifs: Object.fromEntries(["prix", "note", "stock", "tri"].map((cle) => [cle, formulaire.has(`filtre_${cle}`)])),
+        seo_titre: valeurs.seo_titre || null,
+        seo_description: valeurs.seo_description || null,
+      };
+      const { error } = await supabase.from("configurations_boutique").upsert(payload, { onConflict: "boutique_id" });
+      if (error) throw error;
+      const { error: modeError } = await supabase.from("boutiques").update({ mode_vitrine: "WHITE_LABEL" }).eq("id", boutique.id);
+      if (modeError) throw modeError;
+      toast("Site dédié mis a jour");
+      location.reload();
+    } catch (error) {
+      boutonOccupe(button, false);
+      gererErreur(error);
+    }
+  });
+  zone.querySelector("#categorie-site-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const valeurs = Object.fromEntries(new FormData(event.currentTarget));
+    const { error } = await supabase.from("categories_boutique").insert({
+      boutique_id: boutique.id,
+      nom: valeurs.nom.trim(),
+      slug: slugifier(valeurs.nom),
+      image_url: valeurs.image_url?.trim() || null,
+    });
+    if (error) return gererErreur(error);
+    toast("Catégorie ajoutée");
+    location.reload();
+  });
+  zone.querySelectorAll("[data-basculer-categorie]").forEach((button) => button.addEventListener("click", async () => {
+    const { error } = await supabase.from("categories_boutique").update({ actif: button.dataset.actif !== "true" }).eq("id", button.dataset.basculerCategorie);
+    if (error) return gererErreur(error);
+    location.reload();
+  }));
+  zone.querySelector("#domaine-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const valeur = String(new FormData(event.currentTarget).get("domaine") || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const { error } = await supabase.rpc("rpc_ajouter_domaine_boutique", {
+      p_boutique_id: boutique.id,
+      p_domaine: valeur,
+    });
+    if (error) return gererErreur(error);
+    toast("Domaine ajouté, vérification en attente");
+    location.reload();
+  });
+  rafraichirIcones(zone);
+}
+
+function afficherLivraison(donnees) {
   const zone = document.querySelector("#marchand-zone");
   const integration = donnees.integration || {};
   const configuration = etat.configuration;
@@ -369,8 +507,8 @@ function afficherLivraison(organisation, donnees) {
     const valeurs = Object.fromEntries(new FormData(form));
     let telephone = String(valeurs.expediteur_tel || "").replace(/\D/g, "");
     if (telephone.length === 13 && telephone.startsWith("225")) telephone = telephone.slice(3);
-    const { error } = await supabase.rpc("rpc_configurer_integration_ikms", {
-      p_organisation_id: organisation.id,
+    const { error } = await supabase.rpc("rpc_configurer_integration_ikms_boutique", {
+      p_boutique_id: donnees.boutique.id,
       p_zone_depart: String(valeurs.zone_depart || "").toUpperCase(),
       p_expediteur_nom: valeurs.expediteur_nom,
       p_expediteur_tel: telephone,
