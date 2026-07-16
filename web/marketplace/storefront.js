@@ -103,6 +103,7 @@ export async function rendreAccueil() {
 
     const form = document.querySelector("#filtres-form");
     const grille = document.querySelector("#grille-produits");
+    let derniereRequeteCatalogue = 0;
     const synchroniserFormulaire = () => {
       form.elements.categorie.value = filtres.categorieId;
       form.elements.boutique.value = filtres.boutiqueId;
@@ -160,9 +161,12 @@ export async function rendreAccueil() {
       rafraichirIcones(document.querySelector("#filtres-actifs"));
     };
     const afficherCatalogue = async () => {
+      const requeteCatalogue = ++derniereRequeteCatalogue;
       grille.classList.add("chargement");
+      grille.setAttribute("aria-busy", "true");
       try {
         const resultat = await chargerProduits(filtres);
+        if (requeteCatalogue !== derniereRequeteCatalogue) return;
         grille.innerHTML = resultat.produits.length
           ? resultat.produits.map((produit) => carteProduit(produit, favoris)).join("")
           : vide("search-x", "Aucun produit trouve", "Essaie une autre recherche ou retire certains filtres.", '<button class="btn btn-secondaire" id="reinitialiser-catalogue">Tout afficher</button>');
@@ -188,16 +192,21 @@ export async function rendreAccueil() {
         afficherFiltresActifs();
         rafraichirIcones(grille.parentElement);
       } catch (error) {
+        if (requeteCatalogue !== derniereRequeteCatalogue) return;
         grille.innerHTML = vide("wifi-off", "Catalogue indisponible", messageErreur(error));
       } finally {
-        grille.classList.remove("chargement");
+        if (requeteCatalogue === derniereRequeteCatalogue) {
+          grille.classList.remove("chargement");
+          grille.removeAttribute("aria-busy");
+        }
       }
     };
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const valeurs = Object.fromEntries(new FormData(form));
-      const prixMin = lireNombre(valeurs.prix_min);
+      const prixMinLu = lireNombre(valeurs.prix_min);
+      const prixMin = prixMinLu === 0 ? null : prixMinLu;
       const prixMax = lireNombre(valeurs.prix_max);
       if (prixMin !== null && prixMax !== null && prixMax < prixMin) return toast("Le prix maximum doit etre superieur au prix minimum.", true);
       filtres = { ...filtres, categorieId: valeurs.categorie || "", boutiqueId: valeurs.boutique || "", prixMin, prixMax, noteMin: lireNombre(valeurs.note), enStock: valeurs.stock === "1", page: 1 };
@@ -232,7 +241,12 @@ export async function rendreAccueil() {
     });
     document.querySelector(".fermer-filtres").addEventListener("click", fermerFiltres);
     document.querySelector("#fond-filtres").addEventListener("click", fermerFiltres);
-    window.addEventListener("popstate", () => location.reload(), { once: true });
+    window.addEventListener("popstate", async () => {
+      filtres = lireFiltres();
+      synchroniserFormulaire();
+      fermerFiltres();
+      await afficherCatalogue();
+    });
     synchroniserFormulaire();
     await afficherCatalogue();
     rafraichirIcones(main);

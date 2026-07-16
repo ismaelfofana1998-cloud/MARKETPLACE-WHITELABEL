@@ -3,7 +3,7 @@ import { rendreAdmin } from "./admin.js";
 import { rendreCompte } from "./account.js";
 import { rendreMarchand } from "./merchant.js";
 import { initialiser, verifierConfiguration, app, vide } from "./shared.js";
-import { rendreAccueil, rendreCheckout, rendrePanier, rendreProduit } from "./storefront.js";
+import { rendreAccueil, rendreCheckout, rendrePanier, rendreProduit } from "./storefront.js?v=6";
 
 const pages = {
   accueil: rendreAccueil,

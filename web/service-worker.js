@@ -1,4 +1,4 @@
-const CACHE = "ikigai-market-v4";
+const CACHE = "ikigai-market-v5";
 const APP_SHELL = [
   "./",
   "./marketplace/index.html",
