@@ -25,5 +25,8 @@ verify_jwt = false
 [functions.dispatch-livraison]
 verify_jwt = false
 
+[functions.sync-livraisons]
+verify_jwt = false
+
 [functions.paiement-webhook]
 verify_jwt = false

@@ -40,6 +40,16 @@ export const configurationDefaut = {
   couleur_accent: "#E9AE36",
   email_support: null,
   telephone_support: null,
+  site_public_url: "https://ismaelfofana1998-cloud.github.io/MARKETPLACE/",
+  ikms_tenant_nom: "IKIGAI Livraison",
+  ikms_tenant_code: "IKIGAI",
+  ikms_api_base_url: null,
+  ikms_portail_pro_url: null,
+  zones_livraison: [],
+  nom_expediteur_email: "IKIGAI Market",
+  email_expediteur: null,
+  email_api_configuree: false,
+  emails_transactionnels_actifs: false,
 };
 
 export const fcfa = (value) =>
@@ -89,9 +99,11 @@ export const libellesStatut = {
   EPUISE: "Epuise",
   ARCHIVE: "Archive",
   A_ENVOYER: "A envoyer",
+  ENVOI_EN_COURS: "Transmission en cours",
   ENVOYEE: "Envoyee",
   ACCEPTEE: "Acceptee",
   EN_COURS: "En cours",
+  RETOUR: "Retour en cours",
   ERREUR: "Erreur",
 };
 
@@ -100,8 +112,8 @@ export const libelleStatut = (statut) =>
 
 export const tonaliteStatut = (statut) => {
   if (["LIVREE", "ACTIF", "PUBLIEE", "CONFIRME", "PAYE"].includes(statut)) return "succes";
-  if (["ANNULEE", "SUSPENDUE", "ERREUR", "ECHOUE"].includes(statut)) return "danger";
-  if (["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE", "EN_LIVRAISON", "A_ENVOYER"].includes(statut)) return "attention";
+  if (["ANNULEE", "SUSPENDUE", "ERREUR", "ECHOUE", "RETOUR"].includes(statut)) return "danger";
+  if (["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE", "EN_LIVRAISON", "A_ENVOYER", "ENVOI_EN_COURS"].includes(statut)) return "attention";
   return "neutre";
 };
 

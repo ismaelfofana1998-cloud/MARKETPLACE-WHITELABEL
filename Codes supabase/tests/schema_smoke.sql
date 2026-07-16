@@ -8,7 +8,7 @@ begin
     'paniers', 'lignes_panier', 'achats', 'commandes_marketplace',
     'lignes_commande_marketplace', 'paiements_marketplace', 'avis_produits',
     'integrations_livraison', 'missions_logistiques', 'configuration_marketplace',
-    'favoris_marketplace', 'historique_statuts_commande'
+    'favoris_marketplace', 'historique_statuts_commande', 'notifications_email_commande'
   ] loop
     if not exists (
       select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -59,6 +59,21 @@ begin
   end if;
   if not exists (select 1 from public.configuration_marketplace where id = 1) then
     raise exception 'configuration_marketplace non initialisee';
+  end if;
+  if not exists (select 1 from pg_proc where proname = 'rpc_configurer_integration_ikms') then
+    raise exception 'Configuration par marchand IKMS absente';
+  end if;
+  if not exists (select 1 from pg_proc where proname = 'rpc_appliquer_statut_ikms') then
+    raise exception 'Synchronisation des statuts IKMS absente';
+  end if;
+  if not exists (
+    select 1 from cron.job where jobname = 'ikigai-market-operations' and active
+  ) then
+    raise exception 'Tache automatique IKMS absente';
+  end if;
+  if has_function_privilege('authenticated', 'public.rpc_lire_integration_ikms(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.rpc_lire_integration_ikms(uuid)', 'EXECUTE') then
+    raise exception 'La lecture des cles IKMS est exposee';
   end if;
 
   if exists (

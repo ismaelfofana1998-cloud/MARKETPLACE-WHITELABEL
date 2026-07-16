@@ -77,12 +77,13 @@ async function chargerEspace(organisation) {
   if (boutiqueResultat.error) throw boutiqueResultat.error;
   if (!boutiqueResultat.data) return { boutique: null };
   const boutique = boutiqueResultat.data;
+  await supabase.functions.invoke("sync-livraisons", { body: {} }).catch(() => null);
   const [produits, commandes, categories, membres, integration] = await Promise.all([
     supabase.from("produits").select("id, boutique_id, categorie_id, nom, description, marque, prix, prix_barre, images, statut, cree_le, variantes_produit(id, nom, sku, actif, stocks(quantite, seuil_alerte))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }),
-    supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, cree_le)").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
+    supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications, code_zone)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, source, cree_le), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_ramassage, code_livraison, montant_livraison, derniere_synchronisation, derniere_erreur))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
     supabase.from("categories_marketplace").select("id, nom").eq("actif", true).order("ordre"),
     supabase.from("membres_organisation").select("identite_id, role, statut, identites(prenom, nom, email)").eq("organisation_id", organisation.id).order("cree_le"),
-    supabase.from("integrations_livraison").select("*").eq("organisation_id", organisation.id).maybeSingle(),
+    supabase.from("integrations_livraison").select("organisation_id, code_entreprise_livraison, zone_depart, expediteur_nom, expediteur_tel, expediteur_adresse, mode_paiement, cle_api_configuree, actif, derniere_verification, derniere_erreur, modifie_le").eq("organisation_id", organisation.id).maybeSingle(),
   ]);
   const erreur = [produits.error, commandes.error, categories.error, membres.error, integration.error].find(Boolean);
   if (erreur) throw erreur;
@@ -106,10 +107,9 @@ function stockProduit(produit) {
 function prochaineAction(statut) {
   return {
     NOUVELLE: { statut: "CONFIRMEE", libelle: "Confirmer", icone: "check" },
-    CONFIRMEE: { statut: "EN_PREPARATION", libelle: "Commencer", icone: "cooking-pot" },
-    EN_PREPARATION: { statut: "PRETE", libelle: "Marquer prete", icone: "package-check" },
-    PRETE: { statut: "EN_LIVRAISON", libelle: "Remise au livreur", icone: "truck" },
-    EN_LIVRAISON: { statut: "LIVREE", libelle: "Marquer livree", icone: "badge-check" },
+    CONFIRMEE: { statut: "EN_PREPARATION", libelle: "Preparer", icone: "cooking-pot" },
+    EN_PREPARATION: { statut: "PRETE", libelle: "Prete pour livraison", icone: "package-check" },
+    PRETE: { statut: "EN_LIVRAISON", libelle: "Transmettre au livreur", icone: "truck" },
   }[statut];
 }
 
@@ -198,13 +198,18 @@ function afficherCommandes(donnees) {
 function ouvrirCommande(donnees, commandeId) {
   const commande = donnees.commandes.find((element) => element.id === commandeId);
   const adresse = commande.achats?.adresses_livraison || {};
+  const mission = Array.isArray(commande.missions_logistiques) ? commande.missions_logistiques[0] : commande.missions_logistiques;
   const action = prochaineAction(commande.statut);
   document.querySelector("#dialog-title").textContent = commande.reference;
-  document.querySelector("#dialog-zone").innerHTML = `<div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)}</p>${badgeStatut(commande.statut)}</div><strong>${fcfa(commande.total)}</strong></div><hr class="separateur"><div><h3>Articles</h3><div class="pile">${(commande.lignes_commande_marketplace || []).map((ligne) => `<div class="ligne"><img src="${escapeHtml(ligne.image_url || etat.configuration.hero_image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:6px"><div style="flex:1"><strong>${escapeHtml(ligne.nom_produit)}</strong><p class="muted petit" style="margin:4px 0">${escapeHtml(ligne.nom_variante)} - ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</p></div></div>`).join("")}</div></div><hr class="separateur"><div><h3>Livraison</h3><p class="muted petit">${escapeHtml(adresse.destinataire_nom || "Client")} - ${escapeHtml(adresse.telephone || "")}<br>${escapeHtml(adresse.adresse || "")} ${escapeHtml(adresse.commune || "")}<br>${escapeHtml(adresse.indications || "")}</p></div>${commande.note_client ? `<div class="bande-info"><strong>Note client</strong><p class="petit" style="margin:5px 0 0">${escapeHtml(commande.note_client)}</p></div>` : ""}<div class="ligne" style="margin-top:18px">${action ? `<button class="btn btn-primaire" id="action-commande">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" id="annuler-commande">${icone("x-circle")} Annuler</button>` : ""}</div>`;
+  document.querySelector("#dialog-zone").innerHTML = `<div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)}</p>${badgeStatut(commande.statut)}</div><strong>${fcfa(commande.total)}</strong></div><hr class="separateur"><div><h3>Articles</h3><div class="pile">${(commande.lignes_commande_marketplace || []).map((ligne) => `<div class="ligne"><img src="${escapeHtml(ligne.image_url || etat.configuration.hero_image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:6px"><div style="flex:1"><strong>${escapeHtml(ligne.nom_produit)}</strong><p class="muted petit" style="margin:4px 0">${escapeHtml(ligne.nom_variante)} - ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</p></div></div>`).join("")}</div></div><hr class="separateur"><div><h3>Livraison</h3><p class="muted petit">${escapeHtml(adresse.destinataire_nom || "Client")} - ${escapeHtml(adresse.telephone || "")}<br>${escapeHtml(adresse.adresse || "")} ${escapeHtml(adresse.commune || "")}<br>Zone IKMS : ${escapeHtml(adresse.code_zone || "Non renseignee")}<br>${escapeHtml(adresse.indications || "")}</p></div>${mission ? `<div class="bande-info"><div class="ligne-entre"><strong>IKIGAI Livraison</strong>${badgeStatut(mission.statut)}</div><p class="petit" style="margin:6px 0 0">Commande IKMS : ${escapeHtml(mission.commande_livraison_externe_id || "En attente")}<br>Statut IKMS : ${escapeHtml(mission.statut_ikms || "-")}${mission.code_ramassage ? `<br>Code ramassage : <strong>${escapeHtml(mission.code_ramassage)}</strong>` : ""}${mission.code_livraison ? `<br>Code livraison client : <strong>${escapeHtml(mission.code_livraison)}</strong>` : ""}</p></div>` : ""}${commande.note_client ? `<div class="bande-info"><strong>Note client</strong><p class="petit" style="margin:5px 0 0">${escapeHtml(commande.note_client)}</p></div>` : ""}<div class="ligne" style="margin-top:18px">${action ? `<button class="btn btn-primaire" id="action-commande">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" id="annuler-commande">${icone("x-circle")} Annuler</button>` : ""}</div>`;
   document.querySelector("#action-commande")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;
     boutonOccupe(button, true, "Mise a jour...");
-    if (commande.statut === "PRETE" && donnees.integration?.actif) {
+    if (commande.statut === "PRETE") {
+      if (!donnees.integration?.actif || !donnees.integration?.cle_api_configuree) {
+        boutonOccupe(button, false);
+        return toast("Configure et active d'abord le compte client pro IKMS.", true);
+      }
       const resultat = await supabase.functions.invoke("dispatch-livraison", { body: { commande_id: commande.id } });
       boutonOccupe(button, false);
       if (resultat.error || resultat.data?.error) return toast(messageErreur(resultat.error || { message: resultat.data.error }), true);
@@ -215,6 +220,7 @@ function ouvrirCommande(donnees, commandeId) {
     const { error } = await supabase.rpc("rpc_changer_statut_commande_marketplace", { p_commande_id: commande.id, p_nouveau_statut: action.statut, p_motif: null });
     boutonOccupe(button, false);
     if (error) return gererErreur(error);
+    await supabase.functions.invoke("sync-livraisons", { body: { commande_id: commande.id, notifications_uniquement: true } });
     toast("Statut mis a jour");
     location.reload();
   });
@@ -222,6 +228,7 @@ function ouvrirCommande(donnees, commandeId) {
     const motif = prompt("Motif de l'annulation") || "Annulation par le marchand";
     const { error } = await supabase.rpc("rpc_changer_statut_commande_marketplace", { p_commande_id: commande.id, p_nouveau_statut: "ANNULEE", p_motif: motif });
     if (error) return gererErreur(error);
+    await supabase.functions.invoke("sync-livraisons", { body: { commande_id: commande.id, notifications_uniquement: true } });
     toast("Commande annulee et stock restitue");
     location.reload();
   });
@@ -351,19 +358,30 @@ function afficherBoutique(donnees) {
 function afficherLivraison(organisation, donnees) {
   const zone = document.querySelector("#marchand-zone");
   const integration = donnees.integration || {};
-  zone.innerHTML = `<div class="bande-info"><strong>Deux modes disponibles</strong><p class="petit" style="margin:5px 0 0">Sans integration, l'equipe peut remettre manuellement une commande a un livreur. Avec Ikigai Livraison, la mission est envoyee automatiquement quand la commande est prete.</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Connexion Ikigai Livraison</h2><div class="champ"><label>Code entreprise Livraison</label><input name="code_entreprise_livraison" value="${escapeHtml(integration.code_entreprise_livraison)}" placeholder="IKLIV"></div><div class="champ"><label>Identifiant client pro dans Livraison</label><input name="compte_pro_externe_id" value="${escapeHtml(integration.compte_pro_externe_id)}" placeholder="UUID"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer l'envoi automatique depuis la commande</label><button class="btn btn-primaire" style="margin-top:16px">${icone("link")} Enregistrer la connexion</button></form>`;
+  const configuration = etat.configuration;
+  const portail = configuration.ikms_portail_pro_url
+    ? `<a class="btn btn-secondaire" href="${escapeHtml(configuration.ikms_portail_pro_url)}" target="_blank" rel="noopener">${icone("external-link")} Creer mon compte pro</a>`
+    : "";
+  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configure")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Cle API : ${integration.cle_api_configuree ? "configuree dans le coffre securise" : "a renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label><input name="zone_depart" value="${escapeHtml(integration.zone_depart)}" placeholder="COCODY" required></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="SANS_PAIEMENT" ${integration.mode_paiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option><option value="A_LA_LIVRAISON" ${integration.mode_paiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${integration.mode_paiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option></select></div></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Cle API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission a IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la connexion</button></form>`;
   zone.querySelector("#livraison-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const valeurs = Object.fromEntries(new FormData(form));
-    if (!valeurs.code_entreprise_livraison) return toast("Le code entreprise est requis.", true);
-    const { error } = await supabase.from("integrations_livraison").upsert({
-      organisation_id: organisation.id,
-      code_entreprise_livraison: valeurs.code_entreprise_livraison,
-      compte_pro_externe_id: valeurs.compte_pro_externe_id || null,
-      actif: new FormData(form).has("actif"),
+    let telephone = String(valeurs.expediteur_tel || "").replace(/\D/g, "");
+    if (telephone.length === 13 && telephone.startsWith("225")) telephone = telephone.slice(3);
+    const { error } = await supabase.rpc("rpc_configurer_integration_ikms", {
+      p_organisation_id: organisation.id,
+      p_zone_depart: String(valeurs.zone_depart || "").toUpperCase(),
+      p_expediteur_nom: valeurs.expediteur_nom,
+      p_expediteur_tel: telephone,
+      p_expediteur_adresse: valeurs.expediteur_adresse,
+      p_mode_paiement: valeurs.mode_paiement,
+      p_api_key: valeurs.api_key || null,
+      p_actif: new FormData(form).has("actif"),
     });
-    error ? gererErreur(error) : toast("Connexion Livraison enregistree");
+    if (error) return gererErreur(error);
+    toast("Connexion IKMS enregistree");
+    location.reload();
   });
   rafraichirIcones(zone);
 }

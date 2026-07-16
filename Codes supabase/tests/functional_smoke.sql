@@ -19,6 +19,9 @@ declare
   v_stock integer;
   v_total bigint;
   v_historique integer;
+  v_notifications integer;
+  v_mission uuid;
+  v_reclamation jsonb;
   v_resultats integer;
 begin
   insert into auth.users (id, email, raw_user_meta_data, created_at, updated_at)
@@ -103,9 +106,9 @@ begin
   limit 1;
 
   insert into public.adresses_livraison
-    (identite_id, destinataire_nom, telephone, adresse, commune)
+    (identite_id, destinataire_nom, telephone, adresse, commune, code_zone)
   values
-    (v_client, 'Client Test', '+2250102030405', 'Rue du test', 'Abidjan')
+    (v_client, 'Client Test', '0102030405', 'Rue du test', 'Abidjan', 'COCODY')
   returning id into v_adresse;
 
   -- Premiere commande : annulation client et restitution du stock.
@@ -124,6 +127,10 @@ begin
   select total into v_total from public.achats where id = v_achat;
   if v_stock <> 10 then raise exception 'Restitution du stock invalide : %', v_stock; end if;
   if v_total <> 0 then raise exception 'Total apres annulation invalide : %', v_total; end if;
+  select count(*) into v_notifications
+  from public.notifications_email_commande
+  where commande_id = v_commande and statut_commande = 'ANNULEE';
+  if v_notifications <> 1 then raise exception 'Notification d''annulation absente'; end if;
 
   -- Seconde commande : traitement par un salarie jusqu'a livraison.
   perform public.rpc_ajouter_au_panier(v_variante, 1);
@@ -136,8 +143,33 @@ begin
   perform public.rpc_changer_statut_commande_marketplace(v_commande, 'CONFIRMEE', null);
   perform public.rpc_changer_statut_commande_marketplace(v_commande, 'EN_PREPARATION', null);
   perform public.rpc_changer_statut_commande_marketplace(v_commande, 'PRETE', null);
-  perform public.rpc_changer_statut_commande_marketplace(v_commande, 'EN_LIVRAISON', null);
-  perform public.rpc_changer_statut_commande_marketplace(v_commande, 'LIVREE', null);
+
+  insert into public.integrations_livraison (
+    organisation_id, code_entreprise_livraison, zone_depart, expediteur_nom,
+    expediteur_tel, expediteur_adresse, mode_paiement, cle_api_configuree, actif
+  ) values (
+    v_organisation, 'IKIGAI', 'COCODY', 'Boutique Smoke',
+    '0700000000', 'Rue Smoke', 'SANS_PAIEMENT', true, true
+  ) on conflict (organisation_id) do update set
+    zone_depart = excluded.zone_depart,
+    expediteur_nom = excluded.expediteur_nom,
+    expediteur_tel = excluded.expediteur_tel,
+    expediteur_adresse = excluded.expediteur_adresse,
+    cle_api_configuree = true,
+    actif = true;
+
+  v_reclamation := public.rpc_reclamer_mission_ikms(
+    v_commande,
+    '{"test":true}'::jsonb
+  );
+  v_mission := (v_reclamation ->> 'mission_id')::uuid;
+  perform public.rpc_finaliser_mission_ikms(
+    v_mission, v_agent, true, 'CMD-SMOKE', 'RAMASSAGE',
+    'COL-SMOKE', 'LIVRAISON', 1500, '{"data":{"id_commande":"CMD-SMOKE"}}'::jsonb, null
+  );
+  perform public.rpc_appliquer_statut_ikms(
+    v_mission, 'LIVRE', '{"data":{"colis":[{"statut":"LIVRE"}]}}'::jsonb
+  );
 
   if (select statut from public.commandes_marketplace where id = v_commande) <> 'LIVREE' then
     raise exception 'Statut final de commande invalide.';
@@ -151,6 +183,18 @@ begin
   where commande_id = v_commande;
   if v_historique <> 6 then
     raise exception 'Historique de statuts incomplet : %', v_historique;
+  end if;
+  if not exists (
+    select 1 from public.historique_statuts_commande
+    where commande_id = v_commande and nouveau_statut = 'LIVREE' and source = 'IKMS'
+  ) then
+    raise exception 'Livraison non attribuee a IKMS dans l''historique';
+  end if;
+  select count(*) into v_notifications
+  from public.notifications_email_commande
+  where commande_id = v_commande;
+  if v_notifications <> 6 then
+    raise exception 'Notifications de statut incompletes : %', v_notifications;
   end if;
 end $$;
 

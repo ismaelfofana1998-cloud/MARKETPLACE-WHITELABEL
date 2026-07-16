@@ -401,19 +401,28 @@ export async function rendreCheckout() {
     if (!lignes.length) { location.href = "./panier.html"; return; }
     const profil = profilResultat.data || {};
     const adresses = adressesResultat.data || [];
+    const zones = Array.isArray(etat.configuration.zones_livraison) ? etat.configuration.zones_livraison : [];
+    const optionsZones = (selection = "") => `${selection && !zones.some((zone) => zone.code === selection) ? `<option value="${escapeHtml(selection)}" selected>${escapeHtml(selection)}</option>` : ""}${zones.map((zone) => `<option value="${escapeHtml(zone.code)}" ${zone.code === selection ? "selected" : ""}>${escapeHtml(zone.nom || zone.code)}</option>`).join("")}`;
     const sousTotal = lignes.reduce((total, ligne) => total + ligne.produit.prix_effectif * ligne.quantite, 0);
     const boutiques = new Map(lignes.map((ligne) => [ligne.produit.boutique.id, ligne.produit.boutique]));
     const frais = [...boutiques.values()].reduce((total, boutique) => total + Number(boutique.frais_livraison_base || 0), 0);
-    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Finaliser la commande</h1><p class="muted">Livraison et paiement</p></div></div><form id="checkout-form" class="deux-colonnes"><section class="pile"><div class="carte"><h2>Adresse de livraison</h2>${adresses.length ? `<div class="champ"><label>Adresse enregistree</label><select name="adresse_id" id="adresse-select">${adresses.map((adresse) => `<option value="${adresse.id}">${escapeHtml(adresse.libelle)} - ${escapeHtml(adresse.adresse)}</option>`).join("")}<option value="nouvelle">Utiliser une nouvelle adresse</option></select></div>` : '<input type="hidden" name="adresse_id" value="nouvelle">'}<div id="nouvelle-adresse" class="${adresses.length ? "masque" : ""}"><div class="grille-deux"><div class="champ"><label>Nom du destinataire</label><input name="destinataire_nom" value="${escapeHtml(`${profil.prenom || ""} ${profil.nom || ""}`.trim())}"></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" value="${escapeHtml(profil.telephone || "")}"></div></div><div class="champ"><label>Adresse</label><input name="adresse" placeholder="Quartier, rue, repere"></div><div class="grille-deux"><div class="champ"><label>Commune</label><input name="commune" placeholder="Cocody"></div><div class="champ"><label>Libelle</label><input name="libelle" value="Domicile"></div></div><div class="champ"><label>Indications</label><textarea name="indications" placeholder="Batiment, portail, point de repere..."></textarea></div></div></div><div class="carte"><h2>Paiement</h2><label class="case"><input type="radio" name="mode_paiement" value="A_LA_LIVRAISON" checked><span><strong>Paiement a la livraison</strong><br><span class="muted petit">Payez au moment de la remise de votre commande.</span></span></label><div class="bande-info bande-attention petit" style="margin-top:14px">Wave, Orange Money et carte seront proposes des que les comptes commercants seront configures.</div></div><div class="carte"><h2>Instructions</h2><div class="champ"><label>Note pour le marchand ou le livreur</label><textarea name="note" placeholder="Facultatif"></textarea></div></div></section><aside class="carte resume-sticky"><h2>Votre commande</h2><div class="pile">${lignes.map((ligne) => `<div class="ligne-entre petit"><span>${ligne.quantite} x ${escapeHtml(ligne.produit.nom)}</span><strong>${fcfa(ligne.produit.prix_effectif * ligne.quantite)}</strong></div>`).join("")}</div><hr class="separateur"><div class="ligne-entre"><span>Articles</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:9px"><span>Livraison (${boutiques.size})</span><strong>${fcfa(frais)}</strong></div><hr class="separateur"><div class="ligne-entre"><strong>Total</strong><strong style="font-size:20px">${fcfa(sousTotal + frais)}</strong></div><button class="btn btn-primaire btn-bloc" style="margin-top:18px" id="confirmer">${icone("check")} Confirmer la commande</button><p class="muted petit" style="margin:12px 0 0">Le stock et le montant sont verifies une derniere fois avant validation.</p></aside></form></main>`, { actif: "panier" });
+    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Finaliser la commande</h1><p class="muted">Livraison et paiement</p></div></div><form id="checkout-form" class="deux-colonnes"><section class="pile"><div class="carte"><h2>Adresse de livraison</h2>${adresses.length ? `<div class="champ"><label>Adresse enregistree</label><select name="adresse_id" id="adresse-select">${adresses.map((adresse) => `<option value="${adresse.id}">${escapeHtml(adresse.libelle)} - ${escapeHtml(adresse.adresse)}</option>`).join("")}<option value="nouvelle">Utiliser une nouvelle adresse</option></select></div><div class="champ" id="zone-adresse-existante"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone_existante" required><option value="">Choisir une zone</option>${optionsZones(adresses[0]?.code_zone || "")}</select>` : `<input name="code_zone_existante" value="${escapeHtml(adresses[0]?.code_zone)}" placeholder="COCODY" required>`}</div>` : '<input type="hidden" name="adresse_id" value="nouvelle">'}<div id="nouvelle-adresse" class="${adresses.length ? "masque" : ""}"><div class="grille-deux"><div class="champ"><label>Nom du destinataire</label><input name="destinataire_nom" value="${escapeHtml(`${profil.prenom || ""} ${profil.nom || ""}`.trim())}"></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" value="${escapeHtml(profil.telephone || "")}"></div></div><div class="champ"><label>Adresse</label><input name="adresse" placeholder="Quartier, rue, repere"></div><div class="grille-deux"><div class="champ"><label>Commune</label><input name="commune" placeholder="Cocody"></div><div class="champ"><label>Libelle</label><input name="libelle" value="Domicile"></div></div><div class="champ"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone"><option value="">Choisir une zone</option>${optionsZones()}</select>` : '<input name="code_zone" placeholder="COCODY">'}</div><div class="champ"><label>Indications</label><textarea name="indications" placeholder="Batiment, portail, point de repere..."></textarea></div></div></div><div class="carte"><h2>Paiement</h2><label class="case"><input type="radio" name="mode_paiement" value="A_LA_LIVRAISON" checked><span><strong>Paiement a la livraison</strong><br><span class="muted petit">Payez au moment de la remise de votre commande.</span></span></label><div class="bande-info bande-attention petit" style="margin-top:14px">Wave, Orange Money et carte seront proposes des que les comptes commercants seront configures.</div></div><div class="carte"><h2>Instructions</h2><div class="champ"><label>Note pour le marchand ou le livreur</label><textarea name="note" placeholder="Facultatif"></textarea></div></div></section><aside class="carte resume-sticky"><h2>Votre commande</h2><div class="pile">${lignes.map((ligne) => `<div class="ligne-entre petit"><span>${ligne.quantite} x ${escapeHtml(ligne.produit.nom)}</span><strong>${fcfa(ligne.produit.prix_effectif * ligne.quantite)}</strong></div>`).join("")}</div><hr class="separateur"><div class="ligne-entre"><span>Articles</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:9px"><span>Livraison (${boutiques.size})</span><strong>${fcfa(frais)}</strong></div><hr class="separateur"><div class="ligne-entre"><strong>Total</strong><strong style="font-size:20px">${fcfa(sousTotal + frais)}</strong></div><button class="btn btn-primaire btn-bloc" style="margin-top:18px" id="confirmer">${icone("check")} Confirmer la commande</button><p class="muted petit" style="margin:12px 0 0">Le stock et le montant sont verifies une derniere fois avant validation.</p></aside></form></main>`, { actif: "panier" });
     const adresseSelect = document.querySelector("#adresse-select");
-    adresseSelect?.addEventListener("change", () => document.querySelector("#nouvelle-adresse").classList.toggle("masque", adresseSelect.value !== "nouvelle"));
+    adresseSelect?.addEventListener("change", () => {
+      const nouvelle = adresseSelect.value === "nouvelle";
+      document.querySelector("#nouvelle-adresse").classList.toggle("masque", !nouvelle);
+      document.querySelector("#zone-adresse-existante")?.classList.toggle("masque", nouvelle);
+      const adresse = adresses.find((element) => element.id === adresseSelect.value);
+      const champ = document.querySelector('[name="code_zone_existante"]');
+      if (champ && adresse) champ.value = adresse.code_zone || "";
+    });
     document.querySelector("#checkout-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const button = document.querySelector("#confirmer");
       const valeurs = Object.fromEntries(new FormData(event.currentTarget));
       let adresseId = valeurs.adresse_id;
       if (adresseId === "nouvelle") {
-        if (!valeurs.destinataire_nom?.trim() || !valeurs.telephone?.trim() || !valeurs.adresse?.trim()) return toast("Nom, telephone et adresse sont requis.", true);
+        if (!valeurs.destinataire_nom?.trim() || !valeurs.telephone?.trim() || !valeurs.adresse?.trim() || !valeurs.code_zone?.trim()) return toast("Nom, telephone, adresse et zone sont requis.", true);
         boutonOccupe(button, true, "Enregistrement...");
         const { data, error } = await supabase.from("adresses_livraison").insert({
           identite_id: etat.session.user.id,
@@ -423,10 +432,19 @@ export async function rendreCheckout() {
           commune: valeurs.commune?.trim() || null,
           libelle: valeurs.libelle?.trim() || "Domicile",
           indications: valeurs.indications?.trim() || null,
+          code_zone: valeurs.code_zone.trim().toUpperCase(),
           principale: adresses.length === 0,
         }).select("id").single();
         if (error) { boutonOccupe(button, false); return gererErreur(error); }
         adresseId = data.id;
+      } else {
+        const codeZone = valeurs.code_zone_existante?.trim().toUpperCase();
+        if (!codeZone) return toast("Choisis la zone de livraison.", true);
+        const adresse = adresses.find((element) => element.id === adresseId);
+        if (adresse?.code_zone !== codeZone) {
+          const { error: zoneError } = await supabase.from("adresses_livraison").update({ code_zone: codeZone }).eq("id", adresseId);
+          if (zoneError) return gererErreur(zoneError);
+        }
       }
       boutonOccupe(button, true, "Validation...");
       const { data: achatId, error } = await supabase.rpc("rpc_valider_panier", {
@@ -435,6 +453,7 @@ export async function rendreCheckout() {
         p_note: valeurs.note?.trim() || null,
       });
       if (error) { boutonOccupe(button, false); return gererErreur(error); }
+      await supabase.functions.invoke("sync-livraisons", { body: { achat_id: achatId, notifications_uniquement: true } });
       toast("Commande confirmee");
       location.href = `./compte.html?commande=${achatId}`;
     });

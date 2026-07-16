@@ -55,7 +55,7 @@ async function chargerAdministration() {
     supabase.from("boutiques").select("id, organisation_id, nom, slug, statut, note_moyenne, cree_le, organisations(nom, type)").order("cree_le", { ascending: false }),
     supabase.from("produits").select("id, boutique_id, statut", { count: "exact" }),
     supabase.from("commandes_marketplace").select("id, reference, boutique_id, statut, total, cree_le, boutiques(nom)").order("cree_le", { ascending: false }).limit(300),
-    supabase.from("missions_logistiques").select("id, commande_id, statut, tentatives, derniere_erreur, cree_le, commandes_marketplace(reference, boutiques(nom))").order("cree_le", { ascending: false }).limit(100),
+    supabase.from("missions_logistiques").select("id, commande_id, statut, statut_ikms, commande_livraison_externe_id, tentatives, derniere_erreur, derniere_synchronisation, cree_le, commandes_marketplace(reference, boutiques(nom))").order("cree_le", { ascending: false }).limit(100),
     supabase.from("categories_marketplace").select("*").order("ordre").order("nom"),
     supabase.from("configuration_marketplace").select("*").eq("id", 1).single(),
     supabase.from("administrateurs_plateforme").select("identite_id, role, actif, identites(prenom, nom, email)").order("cree_le"),
@@ -99,7 +99,7 @@ function afficherAdministration(admin, donnees) {
     boutiques: () => afficherBoutiques(donnees),
     categories: () => afficherCategories(donnees),
     apparence: () => afficherApparence(admin, donnees),
-    livraisons: () => afficherLivraisons(donnees),
+    livraisons: () => afficherLivraisons(admin, donnees),
   };
   const afficherOnglet = (nom, memoriser = false) => {
     const onglet = onglets[nom] ? nom : "tableau";
@@ -227,9 +227,64 @@ function afficherApparence(admin, donnees) {
   rafraichirIcones(zone);
 }
 
-function afficherLivraisons(donnees) {
+function zonesVersTexte(zones) {
+  return (Array.isArray(zones) ? zones : [])
+    .map((zone) => `${zone.code || ""}|${zone.nom || zone.code || ""}`)
+    .join("\n");
+}
+
+function lireZones(texte) {
+  const uniques = new Map();
+  String(texte || "").split(/\r?\n/).forEach((ligne) => {
+    const [codeBrut, ...nomBrut] = ligne.split("|");
+    const code = String(codeBrut || "").trim().toUpperCase();
+    const nom = nomBrut.join("|").trim() || code;
+    if (code) uniques.set(code, { code, nom });
+  });
+  return [...uniques.values()];
+}
+
+function afficherLivraisons(admin, donnees) {
   const zone = document.querySelector("#admin-zone");
+  const configuration = donnees.configuration;
   const incidents = donnees.missions.filter((mission) => ["ERREUR", "A_ENVOYER"].includes(mission.statut));
-  zone.innerHTML = `<div class="entete-page"><div><h2>Supervision logistique</h2><p class="muted petit">Missions transmises a Ikigai Livraison</p></div>${incidents.length ? `<span class="badge badge-danger">${incidents.length} a verifier</span>` : '<span class="badge badge-succes">Tout est normal</span>'}</div>${donnees.missions.length ? `<div class="table-wrap"><table><thead><tr><th>Commande</th><th>Boutique</th><th>Date</th><th>Tentatives</th><th>Statut</th><th>Derniere erreur</th></tr></thead><tbody>${donnees.missions.map((mission) => `<tr><td><strong>${escapeHtml(mission.commandes_marketplace?.reference || mission.commande_id)}</strong></td><td>${escapeHtml(mission.commandes_marketplace?.boutiques?.nom || "")}</td><td>${formatDate(mission.cree_le, true)}</td><td>${mission.tentatives}</td><td>${badgeStatut(mission.statut)}</td><td class="muted petit">${escapeHtml(mission.derniere_erreur || "")}</td></tr>`).join("")}</tbody></table></div>` : vide("truck", "Aucune mission logistique", "Les missions apparaitront quand une commande prete sera transmise.")}`;
+  const lectureSeule = admin.role !== "SUPER_ADMIN" ? "disabled" : "";
+  zone.innerHTML = `<div class="entete-page"><div><h2>Logistique et notifications</h2><p class="muted petit">Tenant IKMS, zones, emails et missions</p></div>${incidents.length ? `<span class="badge badge-danger">${incidents.length} a verifier</span>` : '<span class="badge badge-succes">Tout est normal</span>'}</div><div class="grille-deux"><form class="carte" id="ikms-plateforme-form"><h3>Tenant IKMS</h3><div class="grille-deux"><div class="champ"><label>Nom</label><input name="ikms_tenant_nom" value="${escapeHtml(configuration.ikms_tenant_nom)}" required ${lectureSeule}></div><div class="champ"><label>Code</label><input name="ikms_tenant_code" value="${escapeHtml(configuration.ikms_tenant_code)}" required ${lectureSeule}></div></div><div class="champ"><label>URL de base API</label><input name="ikms_api_base_url" type="url" value="${escapeHtml(configuration.ikms_api_base_url)}" placeholder="https://projet.supabase.co/functions/v1/api-v1" ${lectureSeule}></div><div class="champ"><label>Page de creation du compte pro</label><input name="ikms_portail_pro_url" type="url" value="${escapeHtml(configuration.ikms_portail_pro_url)}" placeholder="https://..." ${lectureSeule}></div><div class="champ"><label>Zones disponibles</label><textarea name="zones_livraison" rows="7" placeholder="COCODY|Cocody&#10;YOPOUGON|Yopougon" ${lectureSeule}>${escapeHtml(zonesVersTexte(configuration.zones_livraison))}</textarea></div><button class="btn btn-primaire" id="sauver-ikms" ${lectureSeule}>${icone("save")} Enregistrer IKMS</button></form><form class="carte" id="email-transactionnel-form"><div class="ligne-entre"><h3>Emails de statut</h3>${badgeStatut(configuration.emails_transactionnels_actifs ? "ACTIF" : "SUSPENDUE")}</div><div class="champ"><label>Nom expediteur</label><input name="nom_expediteur" value="${escapeHtml(configuration.nom_expediteur_email)}" required ${lectureSeule}></div><div class="champ"><label>Email expediteur verifie</label><input name="email_expediteur" type="email" value="${escapeHtml(configuration.email_expediteur)}" required ${lectureSeule}></div><div class="champ"><label>URL publique</label><input name="site_public_url" type="url" value="${escapeHtml(configuration.site_public_url)}" required ${lectureSeule}></div><div class="champ"><label>Cle API Resend</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${configuration.email_api_configuree ? "Laisser vide pour conserver la cle" : "re_..."}" ${lectureSeule}></div><label class="case"><input name="actif" type="checkbox" ${configuration.emails_transactionnels_actifs ? "checked" : ""} ${lectureSeule}> Envoyer un email a chaque statut</label><button class="btn btn-primaire" id="sauver-emails" style="margin-top:16px" ${lectureSeule}>${icone("mail-check")} Enregistrer les emails</button></form></div><section class="section"><div class="ligne-entre"><div><h3>Missions IKMS</h3><p class="muted petit">Synchronisation automatique toutes les deux minutes</p></div></div>${donnees.missions.length ? `<div class="table-wrap"><table><thead><tr><th>Commande</th><th>Boutique</th><th>IKMS</th><th>Synchronisee</th><th>Tentatives</th><th>Statut</th><th>Erreur</th></tr></thead><tbody>${donnees.missions.map((mission) => `<tr><td><strong>${escapeHtml(mission.commandes_marketplace?.reference || mission.commande_id)}</strong></td><td>${escapeHtml(mission.commandes_marketplace?.boutiques?.nom || "")}</td><td><span class="petit">${escapeHtml(mission.commande_livraison_externe_id || "-")}<br>${escapeHtml(mission.statut_ikms || "-")}</span></td><td>${mission.derniere_synchronisation ? formatDate(mission.derniere_synchronisation, true) : "-"}</td><td>${mission.tentatives}</td><td>${badgeStatut(mission.statut)}</td><td class="muted petit">${escapeHtml(mission.derniere_erreur || "")}</td></tr>`).join("")}</tbody></table></div>` : vide("truck", "Aucune mission logistique", "Les missions apparaitront apres la transmission d'une commande prete.")}</section>`;
+  zone.querySelector("#ikms-plateforme-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = zone.querySelector("#sauver-ikms");
+    const valeurs = Object.fromEntries(new FormData(event.currentTarget));
+    const payload = {
+      ikms_tenant_nom: valeurs.ikms_tenant_nom.trim(),
+      ikms_tenant_code: valeurs.ikms_tenant_code.trim().toUpperCase(),
+      ikms_api_base_url: valeurs.ikms_api_base_url?.trim() || null,
+      ikms_portail_pro_url: valeurs.ikms_portail_pro_url?.trim() || null,
+      zones_livraison: lireZones(valeurs.zones_livraison),
+    };
+    boutonOccupe(button, true, "Enregistrement...");
+    const { error } = await supabase.from("configuration_marketplace").update(payload).eq("id", 1);
+    boutonOccupe(button, false);
+    if (error) return gererErreur(error);
+    Object.assign(configuration, payload);
+    toast("Configuration IKMS enregistree");
+  });
+  zone.querySelector("#email-transactionnel-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = zone.querySelector("#sauver-emails");
+    const valeurs = Object.fromEntries(new FormData(form));
+    boutonOccupe(button, true, "Enregistrement...");
+    const { error } = await supabase.rpc("rpc_configurer_email_transactionnel", {
+      p_email_expediteur: valeurs.email_expediteur,
+      p_nom_expediteur: valeurs.nom_expediteur,
+      p_site_public_url: valeurs.site_public_url,
+      p_api_key: valeurs.api_key || null,
+      p_actif: new FormData(form).has("actif"),
+    });
+    boutonOccupe(button, false);
+    if (error) return gererErreur(error);
+    toast("Emails transactionnels enregistres");
+    location.reload();
+  });
   rafraichirIcones(zone);
 }

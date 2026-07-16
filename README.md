@@ -16,7 +16,8 @@ necessaire. GitHub Pages sert directement le dossier `web`.
 - roles `PROPRIETAIRE`, `ADMIN`, `GESTIONNAIRE`, `AGENT` et `MEMBRE` ;
 - espace SuperAdmin pour les tenants, boutiques, categories et le theme ;
 - invitations par lien et initialisation unique du premier SuperAdmin ;
-- integration optionnelle avec IKIGAI Livraison ;
+- integration IKMS par marchand avec cle API chiffree, suivi automatique et codes de livraison ;
+- emails transactionnels persistants pour chaque statut de commande ;
 - application installable sur telephone.
 
 ## Installation Supabase depuis le tableau de bord
@@ -28,9 +29,14 @@ Pour un projet neuf, ouvrir l'editeur SQL Supabase et executer dans cet ordre :
 3. `Codes supabase/migrations/20260711000300_marketplace_functions.sql`
 4. `Codes supabase/migrations/20260711000400_storage.sql`
 5. `Codes supabase/migrations/20260715000100_marketplace_operations.sql`
+6. `Codes supabase/migrations/20260715000200_marketplace_hardening.sql`
+7. `Codes supabase/migrations/20260715000300_marketplace_rls_recursion_fix.sql`
+8. `Codes supabase/migrations/20260715000400_publish_active_shops.sql`
+9. `Codes supabase/migrations/20260715000500_catalog_search_guardrails.sql`
+10. `Codes supabase/migrations/20260716000100_order_logistics_workflow.sql`
 
-Pour le projet Ikigai Market actuel, les quatre premiers scripts sont deja en
-place. Seul le cinquieme script constitue la mise a jour operationnelle.
+Le dernier script active la file d'emails, Supabase Vault, la synchronisation
+IKMS et la tache automatique executee toutes les deux minutes.
 
 Le test `Codes supabase/tests/schema_smoke.sql` peut ensuite etre execute dans
 l'editeur SQL. Il ne modifie aucune donnee.
@@ -62,18 +68,36 @@ Cette action ne fonctionne que tant qu'aucun administrateur actif n'existe.
 Les fonctions se trouvent dans `supabase/functions` :
 
 - `dispatch-livraison` : envoie une commande prete a IKIGAI Livraison ;
+- `sync-livraisons` : recupere les statuts IKMS et envoie les emails en attente ;
 - `inviter-membre` : variante avec envoi d'email automatique ;
 - `paiement-webhook` : reception securisee d'un statut de paiement.
 
 Le coeur du site fonctionne sans deployer `inviter-membre`, car l'interface
 cree aussi des liens d'invitation directement via SQL.
 
-Secrets utiles :
+Les cles IKMS des marchands et la cle Resend sont saisies depuis les interfaces
+Marchand et SuperAdmin. Elles sont chiffrees dans Supabase Vault et ne sont
+jamais renvoyees au navigateur.
+
+Secrets encore utiles aux autres fonctions :
 
 - `IDENTITY_APP_URL`
-- `IKIGAI_LIVRAISON_API_URL`
-- `IKIGAI_LIVRAISON_API_KEY`
 - `PAIEMENT_WEBHOOK_SECRET`
+
+## Configuration IKMS
+
+1. Dans **Administration > Livraisons**, renseigner l'URL de base `api-v1`,
+   la page de creation des comptes pros et les codes de zones du tenant de
+   livraison.
+2. Dans le meme ecran, renseigner une cle Resend et un email expediteur dont le
+   domaine est verifie, puis activer les emails de statut.
+3. Chaque marchand ouvre **Espace marchand > Livraison**, cree ou recupere son
+   compte client pro dans le tenant IKMS, puis enregistre sa propre cle
+   `ik_live_...`, son adresse et sa zone de ramassage.
+
+Le marchand confirme, prepare et marque la commande prete. La transmission a
+IKMS cree ensuite la mission reelle. Seul le statut `LIVRE` retourne par IKMS
+peut faire passer automatiquement la commande a `LIVREE`.
 
 ## Publication GitHub Pages
 
