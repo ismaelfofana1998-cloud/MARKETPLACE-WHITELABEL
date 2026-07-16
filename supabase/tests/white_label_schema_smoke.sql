@@ -53,6 +53,24 @@ begin
     'authenticated', 'private.valider_ligne_panier_contexte()', 'EXECUTE'
   ) then raise exception 'Validateur prive de panier expose'; end if;
 
+  if has_table_privilege('authenticated', 'public.paniers', 'INSERT')
+     or has_table_privilege('authenticated', 'public.paniers', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.lignes_panier', 'INSERT')
+     or has_table_privilege('authenticated', 'public.lignes_panier', 'UPDATE') then
+    raise exception 'Ecriture directe du panier encore exposee';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.domaines_boutique', 'INSERT')
+     or has_table_privilege('authenticated', 'public.domaines_boutique', 'UPDATE') then
+    raise exception 'Ecriture directe des domaines encore exposee';
+  end if;
+
+  if not has_function_privilege(
+    'authenticated', 'public.rpc_ajouter_domaine_boutique(uuid,text)', 'EXECUTE'
+  ) or not has_function_privilege(
+    'authenticated', 'public.rpc_enregistrer_produit_vitrine(uuid,text,bigint,integer,uuid,uuid,uuid,text,text,text[],text)', 'EXECUTE'
+  ) then raise exception 'RPC de gestion du Site dedie non exposees'; end if;
+
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'configurations_boutique'

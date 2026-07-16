@@ -35,7 +35,9 @@ pour le nouveau projet `kcwcxnfxhvjujmticuwv` :
    établissement et migre Soum Cosmétique lorsqu'elle existe dans les données ;
 3. `20260716093430_white_label_hardening.sql` applique les garde-fous de capacité ;
 4. `20260716093615_white_label_product_publication.sql` publie automatiquement
-   un établissement dès qu'un produit actif lui est attribué.
+   un établissement dès qu'un produit actif lui est attribué ;
+5. `20260716095047_white_label_data_api_privileges.sql` retire les écritures
+   Data API directes sur les paniers, domaines et secrets d’établissement.
 
 Les fichiers du dossier `Codes supabase` restent conservés comme référence
 historique. Ils ne doivent pas être rejoués en plus de la migration de socle.
