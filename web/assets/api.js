@@ -196,6 +196,27 @@ export function boutonOccupe(button, occupe, libelle = "Traitement...") {
 
 export function lienRetour(defaut = "./compte.html") {
   const retour = new URLSearchParams(location.search).get("retour");
-  if (!retour || retour.includes(":") || retour.startsWith("//")) return defaut;
-  return retour;
+  if (!retour) return defaut;
+  try {
+    const cible = new URL(retour, location.href);
+    return cible.origin === location.origin ? cible.href : defaut;
+  } catch {
+    return defaut;
+  }
+}
+
+export function ongletDepuisUrl(onglets, defaut) {
+  try {
+    const onglet = decodeURIComponent(location.hash.replace(/^#/, ""));
+    return onglets.includes(onglet) ? onglet : defaut;
+  } catch {
+    return defaut;
+  }
+}
+
+export function memoriserOnglet(onglet) {
+  if (location.hash === `#${onglet}`) return;
+  const url = new URL(location.href);
+  url.hash = onglet;
+  history.pushState({}, "", url);
 }

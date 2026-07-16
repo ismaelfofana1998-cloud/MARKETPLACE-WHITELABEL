@@ -6,7 +6,9 @@ import {
   icone,
   imageProduit,
   lienRetour,
+  memoriserOnglet,
   messageErreur,
+  ongletDepuisUrl,
   rafraichirIcones,
   supabase,
   toast,
@@ -16,6 +18,8 @@ import {
 import {
   app,
   badgeStatut,
+  brancherAjoutsPanier,
+  brancherFavoris,
   carteProduit,
   coquille,
   etat,
@@ -103,6 +107,17 @@ function carteCommande(achat) {
 
 export async function rendreCompte() {
   if (!etat.session) { rendreAuthentification(); return; }
+  const retourConnexion = lienRetour("");
+  if (retourConnexion) {
+    const cible = new URL(retourConnexion, location.href);
+    const pageCompte = new URL(location.href);
+    pageCompte.searchParams.delete("retour");
+    if (cible.href !== pageCompte.href) {
+      location.replace(cible.href);
+      return;
+    }
+    history.replaceState({}, "", pageCompte);
+  }
   coquille('<main class="conteneur"><div class="vide">Chargement du compte...</div></main>', { actif: "compte" });
   try {
     const donnees = await chargerCompte();
@@ -172,7 +187,10 @@ export async function rendreCompte() {
       rafraichirIcones(zone);
     };
     const afficherFavoris = () => {
-      zone.innerHTML = donnees.favoris.length ? `<div class="grille-produits">${donnees.favoris.map((produit) => carteProduit(produit, new Set(donnees.favoris.map((element) => element.id)))).join("")}</div>` : vide("heart", "Aucun favori", "Enregistre les articles que tu souhaites retrouver rapidement.");
+      const idsFavoris = new Set(donnees.favoris.map((element) => element.id));
+      zone.innerHTML = donnees.favoris.length ? `<div class="grille-produits">${donnees.favoris.map((produit) => carteProduit(produit, idsFavoris)).join("")}</div>` : vide("heart", "Aucun favori", "Enregistre les articles que tu souhaites retrouver rapidement.");
+      brancherAjoutsPanier(zone);
+      brancherFavoris(zone, idsFavoris);
       rafraichirIcones(zone);
     };
     const afficherPro = () => {
@@ -181,13 +199,17 @@ export async function rendreCompte() {
       rafraichirIcones(zone);
     };
     const affichages = { commandes: afficherCommandes, profil: afficherProfil, adresses: afficherAdresses, favoris: afficherFavoris, pro: afficherPro };
-    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
-      document.querySelectorAll("[data-tab]").forEach((element) => element.classList.toggle("actif", element === button));
-      affichages[button.dataset.tab]();
-    }));
+    const afficherOnglet = (nom, memoriser = false) => {
+      const onglet = affichages[nom] ? nom : "commandes";
+      if (memoriser) memoriserOnglet(onglet);
+      document.querySelectorAll("[data-tab]").forEach((element) => element.classList.toggle("actif", element.dataset.tab === onglet));
+      affichages[onglet]();
+    };
+    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => afficherOnglet(button.dataset.tab, true)));
+    window.addEventListener("hashchange", () => afficherOnglet(ongletDepuisUrl(Object.keys(affichages), "commandes")));
     document.querySelector("#deconnexion").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
     document.querySelectorAll("[data-fermer]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
-    afficherCommandes();
+    afficherOnglet(ongletDepuisUrl(Object.keys(affichages), "commandes"));
     if (new URLSearchParams(location.search).has("commande") && donnees.achats.length) ouvrirDetail(new URLSearchParams(location.search).get("commande"));
     rafraichirIcones(app);
   } catch (error) {

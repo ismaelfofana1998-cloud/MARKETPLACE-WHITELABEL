@@ -5,7 +5,9 @@ import {
   formatDate,
   icone,
   imageProduit,
+  memoriserOnglet,
   messageErreur,
+  ongletDepuisUrl,
   rafraichirIcones,
   slugifier,
   supabase,
@@ -34,6 +36,17 @@ async function chargerAccesMarchands() {
   return (data || [])
     .filter((lien) => ["MARCHAND", "RESTAURANT"].includes(lien.organisations?.type))
     .map((lien) => ({ ...lien.organisations, role: lien.role }));
+}
+
+async function verifierAccesAdministration() {
+  const { data, error } = await supabase
+    .from("administrateurs_plateforme")
+    .select("role")
+    .eq("identite_id", etat.session.user.id)
+    .eq("actif", true)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 function afficherOnboarding() {
@@ -101,16 +114,19 @@ function prochaineAction(statut) {
 }
 
 export async function rendreMarchand() {
-  if (!etat.session) return demanderConnexion("./marchand.html");
+  if (!etat.session) return demanderConnexion();
   coquille('<main class="conteneur"><div class="vide">Chargement de l\'espace marchand...</div></main>', { mode: "gestion", espace: "Espace marchand" });
   try {
-    const organisations = await chargerAccesMarchands();
+    const [organisations, adminPlateforme] = await Promise.all([
+      chargerAccesMarchands(),
+      verifierAccesAdministration(),
+    ]);
     if (!organisations.length) { afficherOnboarding(); return; }
     const organisationId = new URLSearchParams(location.search).get("organisation") || organisations[0].id;
     const organisation = organisations.find((element) => element.id === organisationId) || organisations[0];
     const donnees = await chargerEspace(organisation);
     if (!donnees.boutique) { afficherCreationBoutique(organisation); return; }
-    afficherTableauMarchand(organisations, organisation, donnees);
+    afficherTableauMarchand(organisations, organisation, donnees, adminPlateforme);
   } catch (error) {
     coquille(`<main class="conteneur">${vide("triangle-alert", "Espace marchand indisponible", messageErreur(error))}</main>`, { mode: "gestion", espace: "Espace marchand" });
   }
@@ -126,15 +142,15 @@ function afficherCreationBoutique(organisation) {
   });
 }
 
-function afficherTableauMarchand(organisations, organisation, donnees) {
+function afficherTableauMarchand(organisations, organisation, donnees, adminPlateforme) {
   const gestionnaire = ["PROPRIETAIRE", "ADMIN", "GESTIONNAIRE"].includes(organisation.role);
   const administrateur = ["PROPRIETAIRE", "ADMIN"].includes(organisation.role);
   const totalCA = donnees.commandes.filter((commande) => commande.statut !== "ANNULEE").reduce((total, commande) => total + Number(commande.total || 0), 0);
   const nouvelles = donnees.commandes.filter((commande) => ["NOUVELLE", "CONFIRMEE", "EN_PREPARATION"].includes(commande.statut)).length;
   const stockFaible = donnees.produits.filter((produit) => stockProduit(produit) <= 5).length;
-  const navigation = `<nav class="navigation-desktop"><a href="./marchand.html" class="actif">Gestion</a><a href="./index.html">Voir le site</a><a href="../identity/index.html">Equipe</a>${organisation.role === "PROPRIETAIRE" ? '<a href="./admin.html">Administration</a>' : ""}</nav>`;
+  const navigation = `<nav class="navigation-desktop"><a href="./marchand.html#apercu" class="actif">Gestion</a><a href="./index.html">Voir le site</a><a href="../identity/index.html#equipe">Equipe</a>${adminPlateforme ? '<a href="./admin.html#tableau">Administration</a>' : ""}</nav>`;
   coquille(`<main class="conteneur"><div class="entete-page"><div><p class="muted petit">${escapeHtml(organisation.role)}</p><h1>${escapeHtml(donnees.boutique.nom)}</h1><p class="muted">Boutique ${escapeHtml(donnees.boutique.statut.toLowerCase())}</p></div><div class="entete-page-actions">${organisations.length > 1 ? `<select id="organisation-select" class="btn btn-secondaire">${organisations.map((element) => `<option value="${element.id}" ${element.id === organisation.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>` : ""}<a class="btn btn-secondaire" href="./index.html?boutique=${donnees.boutique.id}#produits">${icone("external-link")} Voir la boutique</a></div></div><div class="kpis"><div class="stat"><span class="muted petit">Commandes</span><strong>${donnees.commandes.length}</strong></div><div class="stat"><span class="muted petit">A traiter</span><strong>${nouvelles}</strong></div><div class="stat"><span class="muted petit">Stock faible</span><strong>${stockFaible}</strong></div><div class="stat"><span class="muted petit">Ventes</span><strong>${fcfa(totalCA)}</strong></div></div><div class="mise-en-page" style="margin-top:24px"><nav class="menu-lateral"><button class="actif" data-mtab="apercu">${icone("layout-dashboard")} Apercu</button><button data-mtab="commandes">${icone("package-check")} Commandes ${nouvelles ? `<span class="badge badge-attention">${nouvelles}</span>` : ""}</button>${gestionnaire ? `<button data-mtab="produits">${icone("package")} Produits</button>` : ""}${administrateur ? `<button data-mtab="equipe">${icone("users")} Equipe</button><button data-mtab="boutique">${icone("store")} Boutique</button><button data-mtab="livraison">${icone("truck")} Livraison</button>` : ""}</nav><section id="marchand-zone"></section></div></main><dialog class="dialogue" id="marchand-dialog"><div class="dialogue-entete"><h2 id="dialog-title"></h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="dialog-zone"></div></dialog>`, { mode: "gestion", espace: "Espace marchand", navigation });
-  document.querySelector("#organisation-select")?.addEventListener("change", (event) => { location.href = `./marchand.html?organisation=${event.target.value}`; });
+  document.querySelector("#organisation-select")?.addEventListener("change", (event) => { location.href = `./marchand.html?organisation=${event.target.value}${location.hash}`; });
   document.querySelectorAll("[data-fermer]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
   const onglets = {
     apercu: () => afficherApercu(donnees, nouvelles, stockFaible),
@@ -144,11 +160,15 @@ function afficherTableauMarchand(organisations, organisation, donnees) {
     boutique: () => afficherBoutique(donnees),
     livraison: () => afficherLivraison(organisation, donnees),
   };
-  document.querySelectorAll("[data-mtab]").forEach((button) => button.addEventListener("click", () => {
-    document.querySelectorAll("[data-mtab]").forEach((element) => element.classList.toggle("actif", element === button));
-    onglets[button.dataset.mtab]?.();
-  }));
-  afficherApercu(donnees, nouvelles, stockFaible);
+  const afficherOnglet = (nom, memoriser = false) => {
+    const onglet = onglets[nom] && document.querySelector(`[data-mtab="${nom}"]`) ? nom : "apercu";
+    if (memoriser) memoriserOnglet(onglet);
+    document.querySelectorAll("[data-mtab]").forEach((element) => element.classList.toggle("actif", element.dataset.mtab === onglet));
+    onglets[onglet]();
+  };
+  document.querySelectorAll("[data-mtab]").forEach((button) => button.addEventListener("click", () => afficherOnglet(button.dataset.mtab, true)));
+  window.addEventListener("hashchange", () => afficherOnglet(ongletDepuisUrl(Object.keys(onglets), "apercu")));
+  afficherOnglet(ongletDepuisUrl(Object.keys(onglets), "apercu"));
   abonnerCommandes(donnees.boutique.id);
   rafraichirIcones(app);
 }

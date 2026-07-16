@@ -5,7 +5,9 @@ import {
   fcfa,
   formatDate,
   icone,
+  memoriserOnglet,
   messageErreur,
+  ongletDepuisUrl,
   rafraichirIcones,
   slugifier,
   supabase,
@@ -76,7 +78,7 @@ async function chargerAdministration() {
 }
 
 export async function rendreAdmin() {
-  if (!etat.session) return demanderConnexion("./admin.html");
+  if (!etat.session) return demanderConnexion();
   coquille('<main class="conteneur"><div class="vide">Verification des droits...</div></main>', { mode: "gestion", espace: "Administration" });
   try {
     const admin = await verifierAdmin();
@@ -89,7 +91,7 @@ export async function rendreAdmin() {
 }
 
 function afficherAdministration(admin, donnees) {
-  const navigation = `<nav class="navigation-desktop"><a href="./admin.html" class="actif">Pilotage</a><a href="./marchand.html">Marchands</a><a href="./index.html">Site public</a></nav>`;
+  const navigation = `<nav class="navigation-desktop"><a href="./admin.html#tableau" class="actif">Pilotage</a><a href="./admin.html#boutiques">Marchands</a><a href="./index.html">Site public</a></nav>`;
   coquille(`<main class="conteneur"><div class="entete-page"><div><p class="muted petit">${escapeHtml(admin.role)}</p><h1>Administration IKIGAI Market</h1><p class="muted">Tenants, catalogue, commandes et apparence</p></div><a class="btn btn-secondaire" href="./index.html">${icone("external-link")} Voir le site</a></div><div class="mise-en-page"><nav class="menu-lateral"><button class="actif" data-atab="tableau">${icone("layout-dashboard")} Tableau de bord</button><button data-atab="tenants">${icone("building-2")} Tenants</button><button data-atab="boutiques">${icone("store")} Boutiques</button><button data-atab="categories">${icone("layout-grid")} Categories</button><button data-atab="apparence">${icone("palette")} Apparence</button><button data-atab="livraisons">${icone("truck")} Livraisons</button></nav><section id="admin-zone"></section></div></main><dialog class="dialogue" id="admin-dialog"><div class="dialogue-entete"><h2 id="admin-dialog-title"></h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="admin-dialog-zone"></div></dialog>`, { mode: "gestion", espace: "Administration", navigation });
   const onglets = {
     tableau: () => afficherTableau(donnees),
@@ -99,12 +101,16 @@ function afficherAdministration(admin, donnees) {
     apparence: () => afficherApparence(admin, donnees),
     livraisons: () => afficherLivraisons(donnees),
   };
-  document.querySelectorAll("[data-atab]").forEach((button) => button.addEventListener("click", () => {
-    document.querySelectorAll("[data-atab]").forEach((element) => element.classList.toggle("actif", element === button));
-    onglets[button.dataset.atab]();
-  }));
+  const afficherOnglet = (nom, memoriser = false) => {
+    const onglet = onglets[nom] ? nom : "tableau";
+    if (memoriser) memoriserOnglet(onglet);
+    document.querySelectorAll("[data-atab]").forEach((element) => element.classList.toggle("actif", element.dataset.atab === onglet));
+    onglets[onglet]();
+  };
+  document.querySelectorAll("[data-atab]").forEach((button) => button.addEventListener("click", () => afficherOnglet(button.dataset.atab, true)));
+  window.addEventListener("hashchange", () => afficherOnglet(ongletDepuisUrl(Object.keys(onglets), "tableau")));
   document.querySelectorAll("[data-fermer]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
-  afficherTableau(donnees);
+  afficherOnglet(ongletDepuisUrl(Object.keys(onglets), "tableau"));
   rafraichirIcones(app);
 }
 

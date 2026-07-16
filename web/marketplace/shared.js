@@ -88,10 +88,10 @@ export function coquille(contenu, options = {}) {
     : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}<div class="bandeau-actions"><a class="icone-btn" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-bag")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}</a><a class="icone-btn" href="${compteLien}" title="Compte" aria-label="Compte">${icone(etat.session ? "circle-user-round" : "log-in")}</a></div></div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">
-        <a href="./index.html" class="${actif === "accueil" ? "actif" : ""}">${icone("house")}<span>Accueil</span></a>
-        <a href="./index.html#categories">${icone("layout-grid")}<span>Categories</span></a>
-        <a href="./panier.html" class="${actif === "panier" ? "actif" : ""}">${icone("shopping-bag")}<span>Panier</span></a>
-        <a href="${compteLien}" class="${actif === "compte" ? "actif" : ""}">${icone("user-round")}<span>Compte</span></a>
+        <a href="./index.html" data-nav-mobile="accueil">${icone("house")}<span>Accueil</span></a>
+        <a href="./index.html#categories" data-nav-mobile="categories">${icone("layout-grid")}<span>Categories</span></a>
+        <a href="./panier.html" data-nav-mobile="panier">${icone("shopping-bag")}<span>Panier</span></a>
+        <a href="${compteLien}" data-nav-mobile="compte">${icone("user-round")}<span>Compte</span></a>
       </nav>`
     : "";
 
@@ -103,7 +103,18 @@ export function coquille(contenu, options = {}) {
     ${mobile}
   </div>`;
   rafraichirIcones(app);
-  if (mode === "boutique") brancherRechercheEntete();
+  if (mode === "boutique") {
+    brancherRechercheEntete();
+    synchroniserNavigationMobile(actif);
+  }
+}
+
+function synchroniserNavigationMobile(actif) {
+  const section = actif === "accueil" && location.hash === "#categories" ? "categories" : actif;
+  document.querySelectorAll("[data-nav-mobile]").forEach((lien) => {
+    lien.classList.toggle("actif", lien.dataset.navMobile === section);
+  });
+  window.addEventListener("hashchange", () => synchroniserNavigationMobile(actif), { once: true });
 }
 
 function brancherRechercheEntete() {
@@ -158,11 +169,11 @@ export async function actualiserCompteurPanier() {
   });
 }
 
-export function demanderConnexion(retour = location.pathname + location.search) {
+export function demanderConnexion(retour = location.pathname + location.search + location.hash) {
   location.href = `./compte.html?retour=${encodeURIComponent(retour)}`;
 }
 
-export async function exigerConnexion(retour = location.pathname + location.search) {
+export async function exigerConnexion(retour = location.pathname + location.search + location.hash) {
   if (etat.session) return true;
   demanderConnexion(retour);
   return false;
@@ -273,7 +284,7 @@ export function carteProduit(produit, favoris = new Set()) {
 export function brancherAjoutsPanier(racine) {
   racine.querySelectorAll("[data-ajouter-panier]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!etat.session) return demanderConnexion(location.pathname + location.search);
+      if (!etat.session) return demanderConnexion();
       const varianteId = button.dataset.ajouterPanier;
       if (!varianteId) return;
       button.disabled = true;
@@ -300,7 +311,7 @@ export function brancherFavoris(racine, favoris) {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (!etat.session) return demanderConnexion(location.pathname + location.search);
+      if (!etat.session) return demanderConnexion();
       const produitId = button.dataset.favori;
       const actif = favoris.has(produitId);
       const requete = actif

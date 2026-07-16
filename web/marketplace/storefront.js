@@ -312,7 +312,7 @@ export async function rendreProduit() {
       document.querySelectorAll("[data-image]").forEach((element) => element.classList.toggle("actif", element === button));
     }));
     document.querySelector("#ajouter").addEventListener("click", async (event) => {
-      if (!etat.session) return demanderConnexion(location.pathname + location.search);
+      if (!etat.session) return demanderConnexion();
       const button = event.currentTarget;
       const varianteId = document.querySelector("#variante")?.value || premiereVariante?.id;
       if (!varianteId) return toast("Aucune option disponible.", true);

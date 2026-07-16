@@ -5,7 +5,9 @@ import {
   configurationManquante,
   escapeHtml,
   icone,
+  memoriserOnglet,
   messageErreur,
+  ongletDepuisUrl,
   rafraichirIcones,
   slugifier,
   supabase,
@@ -92,7 +94,17 @@ function rendreAuth(modeInitial = "connexion") {
 
 function rendreDashboard() {
   app.innerHTML = `<div class="app"><header class="bandeau"><div class="bandeau-ligne"><a class="marque" href="../marketplace/index.html"><span style="color:white">IKIGAI</span> <span>Identity</span></a><span class="bandeau-espace">Compte et acces</span><div class="bandeau-actions"><a class="icone-btn" href="../marketplace/index.html" title="Marketplace">${icone("store")}</a><button class="icone-btn" id="deconnexion" title="Deconnexion">${icone("log-out")}</button></div></div></header><div class="conteneur mise-en-page"><nav class="menu-lateral"><button data-tab="profil">${icone("user-round")} Mon profil</button><button data-tab="organisations">${icone("building-2")} Organisations</button><button data-tab="equipe">${icone("users")} Equipe</button><button data-tab="securite">${icone("shield-check")} Securite</button></nav><section id="identity-zone"></section></div><nav class="bottom-nav"><button data-tab="profil">${icone("user-round")}<span>Profil</span></button><button data-tab="organisations">${icone("building-2")}<span>Organisations</span></button><button data-tab="equipe">${icone("users")}<span>Equipe</span></button><a href="../marketplace/index.html">${icone("store")}<span>Market</span></a></nav></div><dialog class="dialogue" id="identity-dialog"><div class="dialogue-entete"><h2 id="dialog-title"></h2><button class="dialogue-fermer" data-fermer>${icone("x")}</button></div><div class="dialogue-corps" id="dialog-zone"></div></dialog>`;
-  document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => { etat.onglet = button.dataset.tab; rendreOnglet(); }));
+  const onglets = ["profil", "organisations", "equipe", "securite"];
+  if (new URLSearchParams(location.search).get("mode") !== "recuperation") {
+    etat.onglet = ongletDepuisUrl(onglets, "profil");
+  }
+  const afficherOnglet = (onglet, memoriser = false) => {
+    etat.onglet = onglets.includes(onglet) ? onglet : "profil";
+    if (memoriser) memoriserOnglet(etat.onglet);
+    rendreOnglet();
+  };
+  document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => afficherOnglet(button.dataset.tab, true)));
+  window.addEventListener("hashchange", () => afficherOnglet(ongletDepuisUrl(onglets, "profil")));
   document.querySelectorAll("[data-fermer]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
   document.querySelector("#deconnexion").addEventListener("click", async () => { await supabase.auth.signOut(); location.reload(); });
   rendreOnglet();
