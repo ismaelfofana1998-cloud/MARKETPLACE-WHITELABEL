@@ -13,7 +13,7 @@ import {
   supabase,
   tonaliteStatut,
   toast,
-} from "../assets/api.js";
+} from "../assets/api.js?v=8";
 
 export const app = document.querySelector("#market-app");
 export const etat = {

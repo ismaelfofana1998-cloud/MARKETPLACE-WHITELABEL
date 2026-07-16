@@ -14,7 +14,7 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js";
+} from "../assets/api.js?v=8";
 import {
   app,
   badgeStatut,
@@ -26,7 +26,7 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js";
+} from "./shared.js?v=8";
 
 function rendreAuthentification() {
   const modeInitial = new URLSearchParams(location.search).get("mode") === "inscription" ? "inscription" : "connexion";

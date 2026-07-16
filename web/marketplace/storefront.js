@@ -8,7 +8,7 @@ import {
   rafraichirIcones,
   supabase,
   toast,
-} from "../assets/api.js";
+} from "../assets/api.js?v=8";
 import {
   actualiserCompteurPanier,
   app,
@@ -25,7 +25,7 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js";
+} from "./shared.js?v=8";
 
 async function chargerBoutiques() {
   const { data, error } = await supabase
