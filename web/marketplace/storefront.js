@@ -68,8 +68,12 @@ export async function rendreAccueil() {
       chargerBoutiques(),
       chargerFavoris(),
     ]);
+    const imagesBandeau = [...new Set((Array.isArray(etat.configuration.hero_images)
+      ? etat.configuration.hero_images
+      : [etat.configuration.hero_image_url]).filter(Boolean))].slice(0, 6);
+    const modeBandeau = etat.configuration.hero_mode_affichage === "COVER" ? "promo-market-remplir" : "";
     const main = document.querySelector("main");
-    main.innerHTML = `<section class="promo-market"><div class="promo-market-contenu"><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><a href="#produits">Explorer le catalogue ${icone("arrow-down")}</a></div></section>
+    main.innerHTML = `<section class="promo-market ${modeBandeau}" aria-label="Bandeau principal">${imagesBandeau.length ? `<div class="promo-market-slides">${imagesBandeau.map((url, index) => `<div class="promo-market-slide ${index === 0 ? "actif" : ""}" aria-hidden="${index === 0 ? "false" : "true"}"><img src="${escapeHtml(url)}" alt=""></div>`).join("")}</div>` : ""}<div class="promo-market-contenu"><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><a href="#produits">Explorer le catalogue ${icone("arrow-down")}</a></div>${imagesBandeau.length > 1 ? `<div class="promo-commandes"><button type="button" data-hero-precedent aria-label="Image precedente">${icone("chevron-left")}</button><div class="promo-indicateurs">${imagesBandeau.map((_, index) => `<button type="button" data-hero-index="${index}" aria-label="Afficher l'image ${index + 1}" ${index === 0 ? 'aria-current="true"' : ""}></button>`).join("")}</div><button type="button" data-hero-suivant aria-label="Image suivante">${icone("chevron-right")}</button></div>` : ""}</section>
       <div class="services-market"><div><span>${icone("truck")}</span><p><strong>Livraison IKIGAI</strong><small>Suivi de la commande a la remise</small></p></div><div><span>${icone("shield-check")}</span><p><strong>Marchands identifies</strong><small>Boutiques et equipes controlees</small></p></div><div><span>${icone("rotate-ccw")}</span><p><strong>Commandes centralisees</strong><small>Retours et historique dans votre compte</small></p></div></div>
       <div class="conteneur catalogue-conteneur">
         <section class="section categories-market" id="categories">
@@ -99,7 +103,54 @@ export async function rendreAccueil() {
         <section class="section" id="boutiques"><div class="entete-page"><div><h2>Boutiques a decouvrir</h2><p class="muted petit">Achetez directement aupres de marchands partenaires</p></div></div><div class="grille-boutiques">${boutiques.slice(0, 9).map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique partenaire IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiee", "La premiere boutique apparaitra ici des sa publication.")}</div></section>
       </div>
       <div class="fond-filtres" id="fond-filtres"></div>`;
-    document.querySelector(".promo-market").style.backgroundImage = `url("${String(etat.configuration.hero_image_url || "").replace(/["\\]/g, "")}")`;
+
+    const promo = document.querySelector(".promo-market");
+    const diapositives = [...promo.querySelectorAll(".promo-market-slide")];
+    if (diapositives.length > 1) {
+      const indicateurs = [...promo.querySelectorAll("[data-hero-index]")];
+      const duree = Math.min(15, Math.max(3, Number(etat.configuration.hero_defilement_secondes || 6))) * 1000;
+      const mouvementReduit = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      let indexActif = 0;
+      let minuteur = null;
+      const arreter = () => {
+        if (minuteur) window.clearInterval(minuteur);
+        minuteur = null;
+      };
+      const afficherDiapositive = (index) => {
+        indexActif = (index + diapositives.length) % diapositives.length;
+        diapositives.forEach((diapositive, position) => {
+          const actif = position === indexActif;
+          diapositive.classList.toggle("actif", actif);
+          diapositive.setAttribute("aria-hidden", String(!actif));
+        });
+        indicateurs.forEach((indicateur, position) => {
+          if (position === indexActif) indicateur.setAttribute("aria-current", "true");
+          else indicateur.removeAttribute("aria-current");
+        });
+      };
+      const demarrer = () => {
+        arreter();
+        if (!mouvementReduit && !document.hidden) {
+          minuteur = window.setInterval(() => afficherDiapositive(indexActif + 1), duree);
+        }
+      };
+      promo.querySelector("[data-hero-precedent]").addEventListener("click", () => {
+        afficherDiapositive(indexActif - 1);
+        demarrer();
+      });
+      promo.querySelector("[data-hero-suivant]").addEventListener("click", () => {
+        afficherDiapositive(indexActif + 1);
+        demarrer();
+      });
+      indicateurs.forEach((indicateur) => indicateur.addEventListener("click", () => {
+        afficherDiapositive(Number(indicateur.dataset.heroIndex));
+        demarrer();
+      }));
+      promo.addEventListener("pointerenter", arreter);
+      promo.addEventListener("pointerleave", demarrer);
+      document.addEventListener("visibilitychange", () => document.hidden ? arreter() : demarrer());
+      demarrer();
+    }
 
     const form = document.querySelector("#filtres-form");
     const grille = document.querySelector("#grille-produits");
@@ -132,6 +183,9 @@ export async function rendreAccueil() {
       document.querySelector("#filtres-catalogue").classList.remove("ouvert");
       document.querySelector("#fond-filtres").classList.remove("visible");
     };
+    const recentrerCatalogue = () => {
+      document.querySelector("#produits").scrollIntoView({ behavior: "smooth", block: "start" });
+    };
     const afficherFiltresActifs = () => {
       const actifs = [];
       const categorie = categories.find((element) => element.id === filtres.categorieId);
@@ -157,6 +211,7 @@ export async function rendreAccueil() {
         synchroniserFormulaire();
         mettreAJourUrl();
         await afficherCatalogue();
+        recentrerCatalogue();
       }));
       rafraichirIcones(document.querySelector("#filtres-actifs"));
     };
@@ -179,13 +234,14 @@ export async function rendreAccueil() {
           filtres.page = Number(button.dataset.page);
           mettreAJourUrl();
           await afficherCatalogue();
-          document.querySelector("#produits").scrollIntoView({ behavior: "smooth" });
+          recentrerCatalogue();
         }));
         document.querySelector("#reinitialiser-catalogue")?.addEventListener("click", async () => {
           filtres = { recherche: "", categorieId: "", boutiqueId: "", prixMin: null, prixMax: null, noteMin: null, enStock: false, tri: "PERTINENCE", page: 1, parPage: 24 };
           synchroniserFormulaire();
           mettreAJourUrl();
           await afficherCatalogue();
+          recentrerCatalogue();
         });
         brancherFavoris(grille, favoris);
         brancherAjoutsPanier(grille);
@@ -204,6 +260,7 @@ export async function rendreAccueil() {
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
       const valeurs = Object.fromEntries(new FormData(form));
       const prixMinLu = lireNombre(valeurs.prix_min);
       const prixMin = prixMinLu === 0 ? null : prixMinLu;
@@ -213,7 +270,13 @@ export async function rendreAccueil() {
       fermerFiltres();
       synchroniserFormulaire();
       mettreAJourUrl();
-      await afficherCatalogue();
+      boutonOccupe(button, true, "Application...");
+      try {
+        await afficherCatalogue();
+        recentrerCatalogue();
+      } finally {
+        boutonOccupe(button, false);
+      }
     });
     document.querySelector("#tri-produits").addEventListener("change", async (event) => {
       filtres.tri = event.target.value;
@@ -226,6 +289,7 @@ export async function rendreAccueil() {
       synchroniserFormulaire();
       mettreAJourUrl();
       await afficherCatalogue();
+      recentrerCatalogue();
     });
     document.querySelectorAll("[data-categorie]").forEach((button) => button.addEventListener("click", async () => {
       filtres.categorieId = button.dataset.categorie;
@@ -233,7 +297,7 @@ export async function rendreAccueil() {
       synchroniserFormulaire();
       mettreAJourUrl();
       await afficherCatalogue();
-      document.querySelector("#produits").scrollIntoView({ behavior: "smooth" });
+      recentrerCatalogue();
     }));
     document.querySelector(".ouvrir-filtres").addEventListener("click", () => {
       document.querySelector("#filtres-catalogue").classList.add("ouvert");

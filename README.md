@@ -13,6 +13,7 @@ necessaire. GitHub Pages sert directement le dossier `web`.
 - panier persistant, controle du stock et commande multi-boutiques ;
 - paiement a la livraison ;
 - espace marchand avec commandes en temps reel, catalogue, images et stock ;
+- apparence administrable avec logo supprimable et bandeau defilant jusqu'a six images ;
 - roles `PROPRIETAIRE`, `ADMIN`, `GESTIONNAIRE`, `AGENT` et `MEMBRE` ;
 - espace SuperAdmin pour les tenants, boutiques, categories et le theme ;
 - invitations par lien et initialisation unique du premier SuperAdmin ;

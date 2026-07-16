@@ -1,6 +1,7 @@
 import {
   appliquerTheme,
   boutonOccupe,
+  configurationDefaut,
   escapeHtml,
   fcfa,
   formatDate,
@@ -11,6 +12,7 @@ import {
   rafraichirIcones,
   slugifier,
   supabase,
+  supprimerImageStockage,
   televerserImage,
   toast,
 } from "../assets/api.js";
@@ -205,24 +207,81 @@ function afficherCategories(donnees) {
 function afficherApparence(admin, donnees) {
   const zone = document.querySelector("#admin-zone");
   const configuration = donnees.configuration;
-  zone.innerHTML = `<form class="carte" id="apparence-form"><h2>Identite visuelle du site</h2><p class="muted petit">Les changements sont appliques a toutes les pages publiques.</p><div class="champ"><label>Nom du site</label><input name="nom" value="${escapeHtml(configuration.nom)}" required></div><div class="champ"><label>Accroche principale</label><input name="slogan" value="${escapeHtml(configuration.slogan)}" required></div><div class="champ"><label>Description</label><textarea name="description">${escapeHtml(configuration.description)}</textarea></div><div class="grille-deux"><div class="champ"><label>Couleur principale</label><input name="couleur_primaire" type="color" value="${escapeHtml(configuration.couleur_primaire)}"></div><div class="champ"><label>Couleur du bandeau</label><input name="couleur_secondaire" type="color" value="${escapeHtml(configuration.couleur_secondaire)}"></div></div><div class="champ"><label>Couleur d'accent</label><input name="couleur_accent" type="color" value="${escapeHtml(configuration.couleur_accent)}"></div><div class="grille-deux"><div class="champ"><label>Email support</label><input name="email_support" type="email" value="${escapeHtml(configuration.email_support)}"></div><div class="champ"><label>Telephone support</label><input name="telephone_support" type="tel" value="${escapeHtml(configuration.telephone_support)}"></div></div><div class="grille-deux"><div class="champ"><label>Logo</label><input name="logo" type="file" accept="image/jpeg,image/png,image/webp">${configuration.logo_url ? `<img src="${escapeHtml(configuration.logo_url)}" alt="" style="width:90px;height:90px;object-fit:contain;border-radius:6px">` : ""}</div><div class="champ"><label>Image d'accueil</label><input name="hero" type="file" accept="image/jpeg,image/png,image/webp"><img src="${escapeHtml(configuration.hero_image_url)}" alt="" style="width:160px;height:90px;object-fit:cover;border-radius:6px"></div></div><button class="btn btn-primaire" id="sauver-apparence" ${admin.role !== "SUPER_ADMIN" ? "disabled" : ""}>${icone("save")} Enregistrer</button></form>`;
+  const imagesInitiales = [...new Set((Array.isArray(configuration.hero_images)
+    ? configuration.hero_images
+    : [configuration.hero_image_url]).filter(Boolean))].slice(0, 6);
+  let imagesBandeau = [...imagesInitiales];
+  let logoActuel = configuration.logo_url || null;
+
+  zone.innerHTML = `<form class="carte" id="apparence-form"><h2>Identite visuelle du site</h2><p class="muted petit">Les changements sont appliques a toutes les pages publiques.</p><div class="champ"><label>Nom du site</label><input name="nom" value="${escapeHtml(configuration.nom)}" required></div><div class="champ"><label>Accroche principale</label><input name="slogan" value="${escapeHtml(configuration.slogan)}" required></div><div class="champ"><label>Description</label><textarea name="description">${escapeHtml(configuration.description)}</textarea></div><div class="grille-deux"><div class="champ"><label>Couleur principale</label><input name="couleur_primaire" type="color" value="${escapeHtml(configuration.couleur_primaire)}"></div><div class="champ"><label>Couleur du bandeau</label><input name="couleur_secondaire" type="color" value="${escapeHtml(configuration.couleur_secondaire)}"></div></div><div class="champ"><label>Couleur d'accent</label><input name="couleur_accent" type="color" value="${escapeHtml(configuration.couleur_accent)}"></div><div class="grille-deux"><div class="champ"><label>Email support</label><input name="email_support" type="email" value="${escapeHtml(configuration.email_support)}"></div><div class="champ"><label>Telephone support</label><input name="telephone_support" type="tel" value="${escapeHtml(configuration.telephone_support)}"></div></div><div class="grille-deux"><div class="champ"><label>Logo</label><input name="logo" type="file" accept="image/jpeg,image/png,image/webp"><div id="logo-apercu" class="apparence-logo"></div></div><div class="champ"><label>Images du bandeau (6 maximum)</label><input name="heroes" type="file" accept="image/jpeg,image/png,image/webp" multiple><div class="grille-deux"><div class="champ"><label>Cadrage</label><select name="hero_mode_affichage"><option value="CONTAIN" ${configuration.hero_mode_affichage !== "COVER" ? "selected" : ""}>Image entiere</option><option value="COVER" ${configuration.hero_mode_affichage === "COVER" ? "selected" : ""}>Remplir le bandeau</option></select></div><div class="champ"><label>Defilement (secondes)</label><input name="hero_defilement_secondes" type="number" min="3" max="15" value="${Number(configuration.hero_defilement_secondes || 6)}" required></div></div></div></div><div id="bandeau-apercus" class="galerie-bandeau-admin"></div><button class="btn btn-primaire" id="sauver-apparence" ${admin.role !== "SUPER_ADMIN" ? "disabled" : ""}>${icone("save")} Enregistrer</button></form>`;
+  const rendreLogo = () => {
+    const apercu = zone.querySelector("#logo-apercu");
+    apercu.innerHTML = logoActuel
+      ? `<div class="media-admin media-admin-logo"><img src="${escapeHtml(logoActuel)}" alt="Logo actuel"><button type="button" class="media-supprimer" id="supprimer-logo" aria-label="Supprimer le logo" title="Supprimer le logo">${icone("trash-2")}</button></div>`
+      : '<span class="muted petit">Aucun logo personnalise</span>';
+    apercu.querySelector("#supprimer-logo")?.addEventListener("click", () => {
+      logoActuel = null;
+      rendreLogo();
+    });
+    rafraichirIcones(apercu);
+  };
+  const rendreImagesBandeau = () => {
+    const apercus = zone.querySelector("#bandeau-apercus");
+    apercus.innerHTML = imagesBandeau.length
+      ? imagesBandeau.map((url, index) => `<div class="media-admin media-admin-bandeau"><img src="${escapeHtml(url)}" alt="Image ${index + 1} du bandeau"><div class="media-admin-actions"><button type="button" data-deplacer-hero="${index}" data-direction="-1" aria-label="Deplacer l'image vers la gauche" ${index === 0 ? "disabled" : ""}>${icone("chevron-left")}</button><button type="button" data-deplacer-hero="${index}" data-direction="1" aria-label="Deplacer l'image vers la droite" ${index === imagesBandeau.length - 1 ? "disabled" : ""}>${icone("chevron-right")}</button><button type="button" class="media-supprimer" data-supprimer-hero="${index}" aria-label="Supprimer l'image" title="Supprimer l'image">${icone("trash-2")}</button></div></div>`).join("")
+      : '<span class="muted petit">Aucune image dans le bandeau</span>';
+    apercus.querySelectorAll("[data-supprimer-hero]").forEach((button) => button.addEventListener("click", () => {
+      imagesBandeau.splice(Number(button.dataset.supprimerHero), 1);
+      rendreImagesBandeau();
+    }));
+    apercus.querySelectorAll("[data-deplacer-hero]").forEach((button) => button.addEventListener("click", () => {
+      const index = Number(button.dataset.deplacerHero);
+      const destination = index + Number(button.dataset.direction);
+      if (destination < 0 || destination >= imagesBandeau.length) return;
+      [imagesBandeau[index], imagesBandeau[destination]] = [imagesBandeau[destination], imagesBandeau[index]];
+      rendreImagesBandeau();
+    }));
+    rafraichirIcones(apercus);
+  };
+  rendreLogo();
+  rendreImagesBandeau();
   zone.querySelector("#apparence-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = document.querySelector("#sauver-apparence");
     const form = event.currentTarget;
     const valeurs = Object.fromEntries(new FormData(form));
     boutonOccupe(button, true, "Enregistrement...");
+    const nouveauxMedias = [];
     try {
-      const logo = form.elements.logo.files[0] ? await televerserImage(form.elements.logo.files[0], "plateforme/identite") : configuration.logo_url;
-      const hero = form.elements.hero.files[0] ? await televerserImage(form.elements.hero.files[0], "plateforme/identite") : configuration.hero_image_url;
-      const payload = { nom: valeurs.nom, slogan: valeurs.slogan, description: valeurs.description, couleur_primaire: valeurs.couleur_primaire, couleur_secondaire: valeurs.couleur_secondaire, couleur_accent: valeurs.couleur_accent, email_support: valeurs.email_support || null, telephone_support: valeurs.telephone_support || null, logo_url: logo, hero_image_url: hero };
+      const fichiersBandeau = [...form.elements.heroes.files];
+      if (imagesBandeau.length + fichiersBandeau.length > 6) throw new Error("Le bandeau accepte 6 images maximum.");
+      let logo = logoActuel;
+      if (form.elements.logo.files[0]) {
+        logo = await televerserImage(form.elements.logo.files[0], "plateforme/identite");
+        nouveauxMedias.push(logo);
+      }
+      const imagesAjoutees = [];
+      for (const fichier of fichiersBandeau) {
+        const image = await televerserImage(fichier, "plateforme/bandeau");
+        imagesAjoutees.push(image);
+        nouveauxMedias.push(image);
+      }
+      const imagesFinales = [...imagesBandeau, ...imagesAjoutees];
+      const payload = { nom: valeurs.nom, slogan: valeurs.slogan, description: valeurs.description, couleur_primaire: valeurs.couleur_primaire, couleur_secondaire: valeurs.couleur_secondaire, couleur_accent: valeurs.couleur_accent, email_support: valeurs.email_support || null, telephone_support: valeurs.telephone_support || null, logo_url: logo, hero_image_url: imagesFinales[0] || configuration.hero_image_url || configurationDefaut.hero_image_url, hero_images: imagesFinales, hero_defilement_secondes: Number(valeurs.hero_defilement_secondes), hero_mode_affichage: valeurs.hero_mode_affichage };
       const { error } = await supabase.from("configuration_marketplace").update(payload).eq("id", 1);
       if (error) throw error;
+      const mediasRetires = imagesInitiales.filter((url) => !imagesFinales.includes(url));
+      if (configuration.logo_url && configuration.logo_url !== logo) mediasRetires.push(configuration.logo_url);
+      await Promise.allSettled(mediasRetires.map((url) => supprimerImageStockage(url)));
       Object.assign(etat.configuration, payload);
       appliquerTheme(etat.configuration);
       toast("Apparence mise a jour");
       location.reload();
-    } catch (error) { boutonOccupe(button, false); gererErreur(error); }
+    } catch (error) {
+      await Promise.allSettled(nouveauxMedias.map((url) => supprimerImageStockage(url)));
+      boutonOccupe(button, false);
+      gererErreur(error);
+    }
   });
   rafraichirIcones(zone);
 }

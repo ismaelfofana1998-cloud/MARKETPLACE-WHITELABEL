@@ -60,6 +60,20 @@ begin
   if not exists (select 1 from public.configuration_marketplace where id = 1) then
     raise exception 'configuration_marketplace non initialisee';
   end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'configuration_marketplace'
+      and column_name = 'hero_images'
+  ) then
+    raise exception 'Galerie du bandeau absente';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'configuration_marketplace'
+      and column_name = 'hero_defilement_secondes'
+  ) then
+    raise exception 'Configuration du defilement absente';
+  end if;
   if not exists (select 1 from pg_proc where proname = 'rpc_configurer_integration_ikms') then
     raise exception 'Configuration par marchand IKMS absente';
   end if;

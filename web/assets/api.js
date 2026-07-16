@@ -35,6 +35,9 @@ export const configurationDefaut = {
   description: "Achetez aupres de commerces locaux et suivez chaque livraison.",
   logo_url: null,
   hero_image_url: IMAGE_PRODUIT_DEFAUT,
+  hero_images: null,
+  hero_defilement_secondes: 6,
+  hero_mode_affichage: "CONTAIN",
   couleur_primaire: "#C75332",
   couleur_secondaire: "#17211F",
   couleur_accent: "#E9AE36",
@@ -191,6 +194,25 @@ export async function televerserImage(file, dossier) {
   });
   if (error) throw error;
   return supabase.storage.from("marketplace").getPublicUrl(nom).data.publicUrl;
+}
+
+export async function supprimerImageStockage(imageUrl) {
+  if (!imageUrl || !supabase || !config.supabaseUrl) return false;
+  let cible;
+  let projet;
+  try {
+    cible = new URL(imageUrl);
+    projet = new URL(config.supabaseUrl);
+  } catch {
+    return false;
+  }
+  const prefixe = "/storage/v1/object/public/marketplace/";
+  if (cible.origin !== projet.origin || !cible.pathname.startsWith(prefixe)) return false;
+  const chemin = decodeURIComponent(cible.pathname.slice(prefixe.length));
+  if (!chemin || chemin.split("/").includes("..")) return false;
+  const { error } = await supabase.storage.from("marketplace").remove([chemin]);
+  if (error) throw error;
+  return true;
 }
 
 export function boutonOccupe(button, occupe, libelle = "Traitement...") {
