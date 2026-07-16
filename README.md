@@ -1,7 +1,7 @@
 # IKIGAI Market
 
-Application e-commerce multi-boutiques reliee a Supabase et preparee pour la
-livraison par IKIGAI Livraison.
+Marketplace multi-boutiques et plateforme white-label multi-tenant reliée à
+Supabase et à IKIGAI Livraison.
 
 Le projet est volontairement simple a publier : aucune compilation n'est
 necessaire. GitHub Pages sert directement le dossier `web`.
@@ -11,36 +11,40 @@ necessaire. GitHub Pages sert directement le dossier `web`.
 - catalogue public, recherche, categories, boutiques et fiches produits ;
 - compte client commun, profil, adresses, favoris et historique des commandes ;
 - panier persistant, controle du stock et commande multi-boutiques ;
+- offre Site dédié avec plusieurs établissements et une URL propre à chacun ;
+- thème, bandeau, filtres, catégories, SEO et domaines propres à chaque Site dédié ;
+- paniers, commandes affichées et configuration IKMS isolés par établissement ;
 - paiement a la livraison ;
 - espace marchand avec commandes en temps reel, catalogue, images et stock ;
 - apparence administrable avec logo supprimable et bandeau defilant jusqu'a six images ;
 - roles `PROPRIETAIRE`, `ADMIN`, `GESTIONNAIRE`, `AGENT` et `MEMBRE` ;
 - espace SuperAdmin pour les tenants, boutiques, categories et le theme ;
 - invitations par lien et initialisation unique du premier SuperAdmin ;
-- integration IKMS par marchand avec cle API chiffree, suivi automatique et codes de livraison ;
+- intégration IKMS par établissement avec clé API chiffrée, suivi automatique et codes de livraison ;
 - emails transactionnels persistants pour chaque statut de commande ;
 - application installable sur telephone.
 
-## Installation Supabase depuis le tableau de bord
+## Installation Supabase
 
-Pour un projet neuf, ouvrir l'editeur SQL Supabase et executer dans cet ordre :
+Le dossier standard `supabase/migrations` contient l'historique reproductible
+pour le nouveau projet `kcwcxnfxhvjujmticuwv` :
 
-1. `Codes supabase/migrations/20260711000100_identity.sql`
-2. `Codes supabase/migrations/20260711000200_marketplace.sql`
-3. `Codes supabase/migrations/20260711000300_marketplace_functions.sql`
-4. `Codes supabase/migrations/20260711000400_storage.sql`
-5. `Codes supabase/migrations/20260715000100_marketplace_operations.sql`
-6. `Codes supabase/migrations/20260715000200_marketplace_hardening.sql`
-7. `Codes supabase/migrations/20260715000300_marketplace_rls_recursion_fix.sql`
-8. `Codes supabase/migrations/20260715000400_publish_active_shops.sql`
-9. `Codes supabase/migrations/20260715000500_catalog_search_guardrails.sql`
-10. `Codes supabase/migrations/20260716000100_order_logistics_workflow.sql`
+1. `20260716092919_white_label_multi_establishments.sql` installe le socle
+   historique puis l'architecture `WHITE_LABEL` multi-établissements ;
+2. `20260716092931_white_label_cart_ikms.sql` isole les paniers et IKMS par
+   établissement et migre Soum Cosmétique lorsqu'elle existe dans les données ;
+3. `20260716093430_white_label_hardening.sql` applique les garde-fous de capacité ;
+4. `20260716093615_white_label_product_publication.sql` publie automatiquement
+   un établissement dès qu'un produit actif lui est attribué ;
+5. `20260716095047_white_label_data_api_privileges.sql` retire les écritures
+   Data API directes sur les paniers, domaines et secrets d’établissement.
 
-Le dernier script active la file d'emails, Supabase Vault, la synchronisation
-IKMS et la tache automatique executee toutes les deux minutes.
+Les fichiers du dossier `Codes supabase` restent conservés comme référence
+historique. Ils ne doivent pas être rejoués en plus de la migration de socle.
 
-Le test `Codes supabase/tests/schema_smoke.sql` peut ensuite etre execute dans
-l'editeur SQL. Il ne modifie aucune donnee.
+Après migration, exécuter les tests `supabase/tests/white_label_schema_smoke.sql`
+et `supabase/tests/white_label_functional_smoke.sql`. Le test fonctionnel est
+transactionnel et termine par un `rollback`.
 
 ## Connexion du site
 
@@ -92,8 +96,8 @@ Secrets encore utiles aux autres fonctions :
    livraison.
 2. Dans le meme ecran, renseigner une cle Resend et un email expediteur dont le
    domaine est verifie, puis activer les emails de statut.
-3. Chaque marchand ouvre **Espace marchand > Livraison**, cree ou recupere son
-   compte client pro dans le tenant IKMS, puis enregistre sa propre cle
+3. Chaque établissement ouvre **Espace marchand > Livraison**, crée ou récupère
+   son compte client pro dans le tenant IKMS, puis enregistre sa propre clé
    `ik_live_...`, son adresse et sa zone de ramassage.
 
 Le marchand confirme, prepare et marque la commande prete. La transmission a

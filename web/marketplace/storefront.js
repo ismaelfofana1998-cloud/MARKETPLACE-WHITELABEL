@@ -8,11 +8,12 @@ import {
   rafraichirIcones,
   supabase,
   toast,
-} from "../assets/api.js?v=8";
+} from "../assets/api.js?v=9";
 import {
   actualiserCompteurPanier,
   app,
   badgeStatut,
+  boutiqueContexteId,
   brancherAjoutsPanier,
   brancherFavoris,
   carteProduit,
@@ -22,12 +23,14 @@ import {
   coquille,
   demanderConnexion,
   etat,
+  estSiteDedie,
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js?v=8";
+} from "./shared.js?v=9";
 
 async function chargerBoutiques() {
+  if (estSiteDedie()) return [etat.vitrine.boutique];
   const { data, error } = await supabase
     .from("boutiques")
     .select("id, nom, slug, description, logo_url, banniere_url, note_moyenne")
@@ -60,6 +63,7 @@ export async function rendreAccueil() {
     };
   };
   let filtres = lireFiltres();
+  if (estSiteDedie()) filtres.boutiqueId = boutiqueContexteId();
   coquille('<main><div class="conteneur"><div class="vide">Chargement du catalogue...</div></div></main>', { actif: "accueil" });
 
   try {
@@ -68,6 +72,13 @@ export async function rendreAccueil() {
       chargerBoutiques(),
       chargerFavoris(),
     ]);
+    const siteDedie = estSiteDedie();
+    const filtresDisponibles = etat.configuration.filtres_actifs || {};
+    if (siteDedie) filtres.boutiqueId = boutiqueContexteId();
+    if (filtresDisponibles.prix === false) { filtres.prixMin = null; filtres.prixMax = null; }
+    if (filtresDisponibles.note === false) filtres.noteMin = null;
+    if (filtresDisponibles.stock === false) filtres.enStock = false;
+    if (filtresDisponibles.tri === false) filtres.tri = "PERTINENCE";
     const imagesBandeau = [...new Set((Array.isArray(etat.configuration.hero_images)
       ? etat.configuration.hero_images
       : [etat.configuration.hero_image_url]).filter(Boolean))].slice(0, 6);
@@ -85,22 +96,22 @@ export async function rendreAccueil() {
             <div class="filtres-entete"><h2>Filtrer</h2><button class="dialogue-fermer fermer-filtres" type="button" aria-label="Fermer">${icone("x")}</button></div>
             <form id="filtres-form">
               <div class="champ"><label for="filtre-categorie">Categorie</label><select id="filtre-categorie" name="categorie"><option value="">Toutes les categories</option>${categories.map((categorie) => `<option value="${categorie.id}">${escapeHtml(categorie.nom)}</option>`).join("")}</select></div>
-              <div class="champ"><label for="filtre-boutique">Boutique</label><select id="filtre-boutique" name="boutique"><option value="">Tous les marchands</option>${boutiques.map((boutique) => `<option value="${boutique.id}">${escapeHtml(boutique.nom)}</option>`).join("")}</select></div>
-              <fieldset class="filtre-groupe"><legend>Prix (FCFA)</legend><div class="grille-prix"><input name="prix_min" type="number" min="0" max="2000000000" step="100" placeholder="Minimum"><input name="prix_max" type="number" min="0" max="2000000000" step="100" placeholder="Maximum"></div></fieldset>
-              <fieldset class="filtre-groupe"><legend>Avis clients</legend><label class="option-filtre"><input type="radio" name="note" value="" checked> Toutes les notes</label><label class="option-filtre"><input type="radio" name="note" value="4"> ${icone("star")} 4 et plus</label><label class="option-filtre"><input type="radio" name="note" value="3"> ${icone("star")} 3 et plus</label></fieldset>
-              <label class="case filtre-stock"><input type="checkbox" name="stock" value="1"><span><strong>Disponible maintenant</strong><br><small class="muted">Masquer les articles epuises</small></span></label>
+              ${siteDedie ? `<input type="hidden" name="boutique" value="${boutiqueContexteId()}">` : `<div class="champ"><label for="filtre-boutique">Boutique</label><select id="filtre-boutique" name="boutique"><option value="">Tous les marchands</option>${boutiques.map((boutique) => `<option value="${boutique.id}">${escapeHtml(boutique.nom)}</option>`).join("")}</select></div>`}
+              ${filtresDisponibles.prix === false ? "" : '<fieldset class="filtre-groupe"><legend>Prix (FCFA)</legend><div class="grille-prix"><input name="prix_min" type="number" min="0" max="2000000000" step="100" placeholder="Minimum"><input name="prix_max" type="number" min="0" max="2000000000" step="100" placeholder="Maximum"></div></fieldset>'}
+              ${filtresDisponibles.note === false ? "" : `<fieldset class="filtre-groupe"><legend>Avis clients</legend><label class="option-filtre"><input type="radio" name="note" value="" checked> Toutes les notes</label><label class="option-filtre"><input type="radio" name="note" value="4"> ${icone("star")} 4 et plus</label><label class="option-filtre"><input type="radio" name="note" value="3"> ${icone("star")} 3 et plus</label></fieldset>`}
+              ${filtresDisponibles.stock === false ? "" : '<label class="case filtre-stock"><input type="checkbox" name="stock" value="1"><span><strong>Disponible maintenant</strong><br><small class="muted">Masquer les articles epuises</small></span></label>'}
               <button class="btn btn-primaire btn-bloc" type="submit">${icone("list-filter")} Appliquer</button>
               <button class="btn btn-texte btn-bloc" type="button" id="effacer-filtres">Tout effacer</button>
             </form>
           </aside>
           <section class="resultats-catalogue">
-            <div class="resultats-entete"><div><p class="sur-titre" id="contexte-resultats">Catalogue IKIGAI</p><h2 id="titre-resultats">Produits disponibles</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div><div class="outils-resultats"><button class="btn btn-secondaire ouvrir-filtres" type="button">${icone("list-filter")} Filtres</button><label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautes</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix decroissant</option><option value="NOTE">Mieux notes</option></select></div></div>
+            <div class="resultats-entete"><div><p class="sur-titre" id="contexte-resultats">Catalogue ${escapeHtml(etat.configuration.nom)}</p><h2 id="titre-resultats">Produits disponibles</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div><div class="outils-resultats"><button class="btn btn-secondaire ouvrir-filtres" type="button">${icone("list-filter")} Filtres</button>${filtresDisponibles.tri === false ? "" : '<label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautes</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix decroissant</option><option value="NOTE">Mieux notes</option></select>'}</div></div>
             <div class="filtres-actifs" id="filtres-actifs"></div>
             <div class="grille-produits" id="grille-produits"><div class="vide">Chargement des produits...</div></div>
             <nav class="pagination" id="pagination" aria-label="Pagination du catalogue"></nav>
           </section>
         </section>
-        <section class="section" id="boutiques"><div class="entete-page"><div><h2>Boutiques a decouvrir</h2><p class="muted petit">Achetez directement aupres de marchands partenaires</p></div></div><div class="grille-boutiques">${boutiques.slice(0, 9).map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique partenaire IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiee", "La premiere boutique apparaitra ici des sa publication.")}</div></section>
+        ${siteDedie && etat.configuration.masquer_autres_boutiques !== false ? "" : `<section class="section" id="boutiques"><div class="entete-page"><div><h2>Boutiques a decouvrir</h2><p class="muted petit">Achetez directement aupres de marchands partenaires</p></div></div><div class="grille-boutiques">${boutiques.slice(0, 9).map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique partenaire IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiee", "La premiere boutique apparaitra ici des sa publication.")}</div></section>`}
       </div>
       <div class="fond-filtres" id="fond-filtres"></div>`;
 
@@ -157,17 +168,18 @@ export async function rendreAccueil() {
     let derniereRequeteCatalogue = 0;
     const synchroniserFormulaire = () => {
       form.elements.categorie.value = filtres.categorieId;
-      form.elements.boutique.value = filtres.boutiqueId;
-      form.elements.prix_min.value = filtres.prixMin ?? "";
-      form.elements.prix_max.value = filtres.prixMax ?? "";
-      form.elements.stock.checked = filtres.enStock;
+      if (form.elements.boutique) form.elements.boutique.value = filtres.boutiqueId;
+      if (form.elements.prix_min) form.elements.prix_min.value = filtres.prixMin ?? "";
+      if (form.elements.prix_max) form.elements.prix_max.value = filtres.prixMax ?? "";
+      if (form.elements.stock) form.elements.stock.checked = filtres.enStock;
       const note = form.querySelector(`[name="note"][value="${filtres.noteMin ?? ""}"]`);
       if (note) note.checked = true;
-      document.querySelector("#tri-produits").value = filtres.tri;
+      if (document.querySelector("#tri-produits")) document.querySelector("#tri-produits").value = filtres.tri;
       document.querySelectorAll("[data-categorie]").forEach((button) => button.classList.toggle("actif", button.dataset.categorie === filtres.categorieId));
     };
     const mettreAJourUrl = () => {
       const params = new URLSearchParams();
+      if (siteDedie) params.set("site", etat.vitrine.boutique.slug);
       if (filtres.recherche) params.set("q", filtres.recherche);
       if (filtres.categorieId) params.set("categorie", filtres.categorieId);
       if (filtres.boutiqueId) params.set("boutique", filtres.boutiqueId);
@@ -226,7 +238,7 @@ export async function rendreAccueil() {
           ? resultat.produits.map((produit) => carteProduit(produit, favoris)).join("")
           : vide("search-x", "Aucun produit trouve", "Essaie une autre recherche ou retire certains filtres.", '<button class="btn btn-secondaire" id="reinitialiser-catalogue">Tout afficher</button>');
         document.querySelector("#resultat-compte").textContent = `${resultat.total} resultat${resultat.total > 1 ? "s" : ""}`;
-        document.querySelector("#contexte-resultats").textContent = filtres.recherche ? `Resultats pour "${filtres.recherche}"` : "Catalogue IKIGAI";
+        document.querySelector("#contexte-resultats").textContent = filtres.recherche ? `Resultats pour "${filtres.recherche}"` : `Catalogue ${etat.configuration.nom}`;
         document.querySelector("#titre-resultats").textContent = categories.find((element) => element.id === filtres.categorieId)?.nom || boutiques.find((element) => element.id === filtres.boutiqueId)?.nom || "Produits disponibles";
         const pages = Math.max(1, Math.ceil(resultat.total / resultat.parPage));
         document.querySelector("#pagination").innerHTML = pages > 1 ? `<button ${filtres.page <= 1 ? "disabled" : ""} data-page="${filtres.page - 1}">${icone("chevron-left")} Precedent</button><span>Page ${filtres.page} sur ${pages}</span><button ${filtres.page >= pages ? "disabled" : ""} data-page="${filtres.page + 1}">Suivant ${icone("chevron-right")}</button>` : "";
@@ -278,7 +290,7 @@ export async function rendreAccueil() {
         boutonOccupe(button, false);
       }
     });
-    document.querySelector("#tri-produits").addEventListener("change", async (event) => {
+    document.querySelector("#tri-produits")?.addEventListener("change", async (event) => {
       filtres.tri = event.target.value;
       filtres.page = 1;
       mettreAJourUrl();
@@ -321,13 +333,16 @@ export async function rendreAccueil() {
 }
 
 async function chargerProduit(id) {
-  const construireRequete = (avecExtension = true) => supabase
-    .from("produits")
-    .select(`id, boutique_id, categorie_id, nom, slug, description, ${avecExtension ? "marque," : ""} prix, prix_barre, images, statut, cree_le, boutiques!inner(id, nom, slug, description, logo_url, telephone, adresse, statut, frais_livraison_base), variantes_produit(id, nom, prix, actif, attributs, stocks(quantite, seuil_alerte)), avis_produits(note, commentaire, cree_le, identites(prenom, nom))`)
-    .eq("id", id)
-    .in("statut", ["ACTIF", "EPUISE"])
-    .eq("boutiques.statut", "PUBLIEE")
-    .maybeSingle();
+  const construireRequete = (avecExtension = true) => {
+    let requete = supabase
+      .from("produits")
+      .select(`id, boutique_id, categorie_id, categorie_boutique_id, nom, slug, description, ${avecExtension ? "marque," : ""} prix, prix_barre, images, statut, cree_le, boutiques!inner(id, nom, slug, description, logo_url, telephone, adresse, statut, frais_livraison_base), variantes_produit(id, nom, prix, actif, attributs, stocks(quantite, seuil_alerte)), avis_produits(note, commentaire, cree_le, identites(prenom, nom))`)
+      .eq("id", id)
+      .in("statut", ["ACTIF", "EPUISE"])
+      .eq("boutiques.statut", "PUBLIEE");
+    if (boutiqueContexteId()) requete = requete.eq("boutique_id", boutiqueContexteId());
+    return requete.maybeSingle();
+  };
   let { data, error } = await construireRequete(true);
   if (error?.code === "42703" || error?.code === "PGRST204") {
     const ancienSchema = await construireRequete(false);
@@ -355,12 +370,13 @@ export async function rendreProduit() {
     const variantes = produit.variantes.filter((variante) => variante.actif);
     const premiereVariante = variantes[0];
     const avis = produit.avis_produits || [];
-    const similairesResultat = produit.categorie_id
-      ? await chargerProduits({ categorieId: produit.categorie_id, limit: 6, tri: "NOUVEAUTES" })
+    const categorieEffective = produit.categorie_boutique_id || produit.categorie_id;
+    const similairesResultat = categorieEffective
+      ? await chargerProduits({ categorieId: categorieEffective, limit: 6, tri: "NOUVEAUTES" })
       : { produits: [] };
     const similaires = similairesResultat.produits.filter((element) => element.id !== produit.id).slice(0, 5);
     coquille(`<main class="conteneur">
-      <nav class="fil-ariane" aria-label="Fil d'Ariane"><a href="./index.html">Accueil</a><span>${icone("chevron-right")}</span><a href="./index.html?categorie=${produit.categorie_id || ""}#produits">Catalogue</a><span>${icone("chevron-right")}</span><strong>${escapeHtml(produit.nom)}</strong></nav>
+      <nav class="fil-ariane" aria-label="Fil d'Ariane"><a href="./index.html">Accueil</a><span>${icone("chevron-right")}</span><a href="./index.html?categorie=${categorieEffective || ""}#produits">Catalogue</a><span>${icone("chevron-right")}</span><strong>${escapeHtml(produit.nom)}</strong></nav>
       <section class="section produit-detail">
         <div><img class="produit-detail-image" id="image-principale" src="${escapeHtml(images[0])}" alt="${escapeHtml(produit.nom)}"><div class="miniatures">${images.map((image, index) => `<button class="miniature ${index === 0 ? "actif" : ""}" data-image="${escapeHtml(image)}"><img src="${escapeHtml(image)}" alt=""></button>`).join("")}</div></div>
         <div>
@@ -376,7 +392,7 @@ export async function rendreProduit() {
         </div>
       </section>
       <section class="section"><div class="carte boutique-carte"><img class="boutique-logo" src="${escapeHtml(produit.boutique?.logo_url || images[0])}" alt=""><div><h2>${escapeHtml(produit.boutique?.nom)}</h2><p class="muted petit">${escapeHtml(produit.boutique?.description || produit.boutique?.adresse || "Marchand IKIGAI Market")}</p><a class="btn btn-secondaire" href="./index.html?boutique=${produit.boutique_id}#produits">Voir ses produits</a></div></div></section>
-      ${similaires.length ? `<section class="section"><div class="entete-page"><div><h2>Produits similaires</h2><p class="muted petit">Dans la meme categorie</p></div><a class="btn btn-texte" href="./index.html?categorie=${produit.categorie_id}#produits">Tout voir ${icone("arrow-right")}</a></div><div class="grille-produits" id="produits-similaires">${similaires.map((element) => carteProduit(element, favoris)).join("")}</div></section>` : ""}
+      ${similaires.length ? `<section class="section"><div class="entete-page"><div><h2>Produits similaires</h2><p class="muted petit">Dans la meme categorie</p></div><a class="btn btn-texte" href="./index.html?categorie=${categorieEffective}#produits">Tout voir ${icone("arrow-right")}</a></div><div class="grille-produits" id="produits-similaires">${similaires.map((element) => carteProduit(element, favoris)).join("")}</div></section>` : ""}
       <section class="section"><h2>Avis clients</h2><div class="pile">${avis.length ? avis.slice(0, 8).map((avisProduit) => `<article class="carte"><div class="ligne-entre"><strong>${escapeHtml(`${avisProduit.identites?.prenom || "Client"} ${avisProduit.identites?.nom?.[0] || ""}`.trim())}</strong><span class="note">${icone("star")} ${avisProduit.note}/5</span></div><p class="muted petit" style="margin:8px 0 0">${escapeHtml(avisProduit.commentaire || "A recommande ce produit.")}</p></article>`).join("") : '<p class="muted">Aucun avis pour le moment.</p>'}</div></section>
     </main>`);
     brancherFavoris(app, favoris);
@@ -395,7 +411,11 @@ export async function rendreProduit() {
       const varianteId = document.querySelector("#variante")?.value || premiereVariante?.id;
       if (!varianteId) return toast("Aucune option disponible.", true);
       boutonOccupe(button, true, "Ajout...");
-      const { error } = await supabase.rpc("rpc_ajouter_au_panier", { p_variante_id: varianteId, p_quantite: quantite });
+      const { error } = await supabase.rpc("rpc_ajouter_au_panier", {
+        p_variante_id: varianteId,
+        p_quantite: quantite,
+        p_boutique_contexte_id: boutiqueContexteId(),
+      });
       boutonOccupe(button, false);
       if (error) return gererErreur(error);
       await actualiserCompteurPanier();
@@ -413,12 +433,15 @@ export async function rendreProduit() {
 
 export async function chargerLignesPanier() {
   if (!etat.session) return [];
-  const { data, error } = await supabase
+  let requete = supabase
     .from("lignes_panier")
-    .select("id, quantite, variante_id, paniers!inner(identite_id, statut), variantes_produit(id, nom, prix, actif, stocks(quantite), produits(id, boutique_id, nom, prix, images, statut, boutiques(id, nom, frais_livraison_base)))")
+    .select("id, quantite, variante_id, paniers!inner(identite_id, statut, boutique_contexte_id), variantes_produit(id, nom, prix, actif, stocks(quantite), produits(id, boutique_id, nom, prix, images, statut, boutiques(id, nom, frais_livraison_base)))")
     .eq("paniers.identite_id", etat.session.user.id)
-    .eq("paniers.statut", "ACTIF")
-    .order("cree_le");
+    .eq("paniers.statut", "ACTIF");
+  requete = boutiqueContexteId()
+    ? requete.eq("paniers.boutique_contexte_id", boutiqueContexteId())
+    : requete.is("paniers.boutique_contexte_id", null);
+  const { data, error } = await requete.order("cree_le");
   if (error) throw error;
   return (data || []).map((ligne) => {
     const variante = Array.isArray(ligne.variantes_produit) ? ligne.variantes_produit[0] : ligne.variantes_produit;
@@ -529,6 +552,7 @@ export async function rendreCheckout() {
         p_adresse_id: adresseId,
         p_mode_paiement: valeurs.mode_paiement,
         p_note: valeurs.note?.trim() || null,
+        p_boutique_contexte_id: boutiqueContexteId(),
       });
       if (error) { boutonOccupe(button, false); return gererErreur(error); }
       await supabase.functions.invoke("sync-livraisons", { body: { achat_id: achatId, notifications_uniquement: true } });

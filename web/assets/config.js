@@ -1,4 +1,4 @@
 window.IKIGAI_CONFIG = {
-  supabaseUrl: "https://fnizsjcvjbibdwmtvftq.supabase.co",
-  supabasePublishableKey: "sb_publishable_cqEvkYTOW2O8gHPgoP0Swg_zMInO0Jk",
+  supabaseUrl: "https://kcwcxnfxhvjujmticuwv.supabase.co",
+  supabasePublishableKey: "sb_publishable_2HrdU7QIoHBKe_d6_-JdzQ_FpRA9lwx",
 };

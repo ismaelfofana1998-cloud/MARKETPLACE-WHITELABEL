@@ -84,25 +84,24 @@ Deno.serve(async (req) => {
   let erreurs = 0;
   if (!notificationsUniquement && missionIds.length) {
     const { data: missions } = await admin.from("missions_logistiques")
-      .select("id, commande_id, commande_livraison_externe_id, commandes_marketplace(boutiques(organisation_id))")
+      .select("id, commande_id, commande_livraison_externe_id, commandes_marketplace(boutique_id)")
       .in("id", missionIds);
     const integrations = new Map<string, Record<string, unknown>>();
 
     for (const mission of missions || []) {
       const commande = relationUnique(mission.commandes_marketplace) as Record<string, unknown> | null;
-      const boutique = relationUnique(commande?.boutiques as Record<string, unknown> | null) as Record<string, unknown> | null;
-      const organisationId = String(boutique?.organisation_id || "");
+      const boutiqueId = String(commande?.boutique_id || "");
       try {
-        let integration = integrations.get(organisationId);
+        let integration = integrations.get(boutiqueId);
         if (!integration) {
-          const { data, error } = await admin.rpc("rpc_lire_integration_ikms", {
-            p_organisation_id: organisationId,
+          const { data, error } = await admin.rpc("rpc_lire_integration_ikms_boutique", {
+            p_boutique_id: boutiqueId,
           });
           if (error || !data?.actif || !data?.api_key || !data?.api_base_url) {
             throw new Error(error?.message || "Integration IKMS incomplete.");
           }
           integration = data;
-          integrations.set(organisationId, integration);
+          integrations.set(boutiqueId, integration);
         }
 
         const response = await fetch(urlIkms(
