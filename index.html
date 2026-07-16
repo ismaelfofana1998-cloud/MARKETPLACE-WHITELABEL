@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IKIGAI Market</title>
+    <meta http-equiv="refresh" content="0; url=./web/marketplace/index.html">
+    <script>
+      const cible = new URL("./web/marketplace/index.html", window.location.href);
+      cible.search = window.location.search;
+      cible.hash = window.location.hash;
+      window.location.replace(cible.href);
+    </script>
+  </head>
+  <body>
+    <p><a href="./web/marketplace/index.html">Ouvrir IKIGAI Market</a></p>
+  </body>
+</html>
