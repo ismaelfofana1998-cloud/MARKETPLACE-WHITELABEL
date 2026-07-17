@@ -13,7 +13,7 @@ import {
   supabase,
   televerserImage,
   toast,
-} from "../assets/api.js?v=10";
+} from "../assets/api.js?v=11";
 import {
   app,
   badgeStatut,
@@ -22,7 +22,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=10";
+} from "./shared.js?v=11";
 
 let canalCommandes = null;
 
@@ -541,11 +541,12 @@ function afficherSiteDedie(donnees) {
 function afficherLivraison(donnees) {
   const zone = document.querySelector("#marchand-zone");
   const integration = donnees.integration || {};
+  const modePaiement = integration.mode_paiement || "A_LA_LIVRAISON";
   const configuration = etat.configuration;
   const portail = configuration.ikms_portail_pro_url
     ? `<a class="btn btn-secondaire" href="${escapeHtml(configuration.ikms_portail_pro_url)}" target="_blank" rel="noopener">${icone("external-link")} Creer mon compte pro</a>`
     : "";
-  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configure")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Cle API : ${integration.cle_api_configuree ? "configuree dans le coffre securise" : "a renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label><input name="zone_depart" value="${escapeHtml(integration.zone_depart)}" placeholder="COCODY" required></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="SANS_PAIEMENT" ${integration.mode_paiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option><option value="A_LA_LIVRAISON" ${integration.mode_paiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${integration.mode_paiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option></select></div></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Cle API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission a IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la connexion</button></form>`;
+  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configure")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Cle API : ${integration.cle_api_configuree ? "configuree dans le coffre securise" : "a renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label><input name="zone_depart" value="${escapeHtml(integration.zone_depart)}" placeholder="COCODY" required></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="A_LA_LIVRAISON" ${modePaiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${modePaiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option><option value="SANS_PAIEMENT" ${modePaiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option></select><span class="champ-aide">Facture compte pro fonctionne seulement si IKMS a active la facturation differee pour cette cle.</span></div></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Cle API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission a IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la connexion</button></form>`;
   zone.querySelector("#livraison-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;

@@ -15,7 +15,7 @@ import {
   supprimerImageStockage,
   televerserImage,
   toast,
-} from "../assets/api.js?v=10";
+} from "../assets/api.js?v=11";
 import {
   app,
   badgeStatut,
@@ -24,7 +24,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=10";
+} from "./shared.js?v=11";
 
 async function verifierAdmin() {
   const { data, error } = await supabase

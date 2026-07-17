@@ -64,13 +64,17 @@ Deno.serve(async (req) => {
     const adresse = relationUnique(achat?.adresses_livraison as Record<string, unknown> | null) as Record<string, unknown> | null;
     if (!adresse?.code_zone) throw new Error("La zone IKMS de l'adresse client est manquante.");
 
+    const modePaiement = String(integration.mode_paiement || "A_LA_LIVRAISON").trim().toUpperCase();
+    const modePaiementIkms = ["SANS_PAIEMENT", "A_LA_LIVRAISON", "PAR_EXPEDITEUR"].includes(modePaiement)
+      ? modePaiement
+      : "A_LA_LIVRAISON";
     const destinataireAdresse = [adresse.adresse, adresse.commune, adresse.indications]
       .filter(Boolean).join(", ");
     const payload = {
       expediteur_nom: integration.expediteur_nom || boutique?.nom,
       expediteur_tel: telephoneIvoirien(integration.expediteur_tel),
       expediteur_adresse: integration.expediteur_adresse || null,
-      mode_paiement: integration.mode_paiement || "SANS_PAIEMENT",
+      mode_paiement: modePaiementIkms,
       zone_depart: integration.zone_depart,
       colis: [{
         destinataire_nom: adresse.destinataire_nom,
