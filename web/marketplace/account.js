@@ -14,7 +14,7 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js?v=9";
+} from "../assets/api.js?v=10";
 import {
   app,
   badgeStatut,
@@ -27,7 +27,18 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js?v=9";
+} from "./shared.js?v=10";
+
+function demanderMotifAnnulationClient() {
+  const motif = prompt("Motif de l'annulation");
+  if (motif === null) return null;
+  const nettoye = motif.trim();
+  if (!nettoye) {
+    toast("Annulation interrompue : indique un motif.", true);
+    return null;
+  }
+  return nettoye;
+}
 
 function rendreAuthentification() {
   const modeInitial = new URLSearchParams(location.search).get("mode") === "inscription" ? "inscription" : "connexion";
@@ -149,7 +160,8 @@ export async function rendreCompte() {
       }).join("");
       document.querySelector("#detail-zone").innerHTML = `<div class="ligne-entre"><div><p class="muted petit">${formatDate(achat.cree_le, true)}</p><h3>${escapeHtml(achat.reference)}</h3></div><strong>${fcfa(achat.total)}</strong></div><hr class="separateur"><div class="pile">${contenuCommandes}</div><hr class="separateur"><div><strong>Livraison</strong><p class="muted petit" style="margin:5px 0 0">${escapeHtml(achat.adresses_livraison?.destinataire_nom || "")} - ${escapeHtml(achat.adresses_livraison?.telephone || "")}<br>${escapeHtml(achat.adresses_livraison?.adresse || "")} ${escapeHtml(achat.adresses_livraison?.commune || "")}<br>Zone : ${escapeHtml(achat.adresses_livraison?.code_zone || "Non renseignee")}</p></div>`;
       document.querySelectorAll("[data-annuler]").forEach((button) => button.addEventListener("click", async () => {
-        const motif = prompt("Motif de l'annulation (facultatif)") || null;
+        const motif = demanderMotifAnnulationClient();
+        if (!motif) return;
         const { error } = await supabase.rpc("rpc_annuler_commande_client", { p_commande_id: button.dataset.annuler, p_motif: motif });
         if (error) return gererErreur(error);
         await supabase.functions.invoke("sync-livraisons", { body: { commande_id: button.dataset.annuler, notifications_uniquement: true } });

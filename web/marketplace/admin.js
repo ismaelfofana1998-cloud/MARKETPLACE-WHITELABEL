@@ -15,7 +15,7 @@ import {
   supprimerImageStockage,
   televerserImage,
   toast,
-} from "../assets/api.js?v=9";
+} from "../assets/api.js?v=10";
 import {
   app,
   badgeStatut,
@@ -24,7 +24,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=9";
+} from "./shared.js?v=10";
 
 async function verifierAdmin() {
   const { data, error } = await supabase
@@ -346,6 +346,25 @@ function lireZones(texte) {
   return [...uniques.values()];
 }
 
+function normaliserUrlIkms(value) {
+  const brut = String(value || "").trim().replace(/\/+$/, "");
+  if (!brut) return null;
+  let url;
+  try {
+    url = new URL(brut);
+  } catch {
+    throw new Error("URL IKMS invalide.");
+  }
+  if (url.protocol !== "https:") throw new Error("L'URL IKMS doit utiliser HTTPS.");
+  if (url.pathname.includes("/rest/v1")) {
+    throw new Error("URL IKMS incorrecte : utilise l'endpoint applicatif /functions/v1/api-v1, pas /rest/v1.");
+  }
+  if (!url.pathname.includes("/functions/v1/")) {
+    throw new Error("URL IKMS incorrecte : renseigne l'URL de l'API IKMS, par exemple https://projet.supabase.co/functions/v1/api-v1.");
+  }
+  return url.href.replace(/\/+$/, "");
+}
+
 function afficherLivraisons(admin, donnees) {
   const zone = document.querySelector("#admin-zone");
   const configuration = donnees.configuration;
@@ -356,13 +375,18 @@ function afficherLivraisons(admin, donnees) {
     event.preventDefault();
     const button = zone.querySelector("#sauver-ikms");
     const valeurs = Object.fromEntries(new FormData(event.currentTarget));
-    const payload = {
-      ikms_tenant_nom: valeurs.ikms_tenant_nom.trim(),
-      ikms_tenant_code: valeurs.ikms_tenant_code.trim().toUpperCase(),
-      ikms_api_base_url: valeurs.ikms_api_base_url?.trim() || null,
-      ikms_portail_pro_url: valeurs.ikms_portail_pro_url?.trim() || null,
-      zones_livraison: lireZones(valeurs.zones_livraison),
-    };
+    let payload;
+    try {
+      payload = {
+        ikms_tenant_nom: valeurs.ikms_tenant_nom.trim(),
+        ikms_tenant_code: valeurs.ikms_tenant_code.trim().toUpperCase(),
+        ikms_api_base_url: normaliserUrlIkms(valeurs.ikms_api_base_url),
+        ikms_portail_pro_url: valeurs.ikms_portail_pro_url?.trim() || null,
+        zones_livraison: lireZones(valeurs.zones_livraison),
+      };
+    } catch (error) {
+      return gererErreur(error);
+    }
     boutonOccupe(button, true, "Enregistrement...");
     const { error } = await supabase.from("configuration_marketplace").update(payload).eq("id", 1);
     boutonOccupe(button, false);

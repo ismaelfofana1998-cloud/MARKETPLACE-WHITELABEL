@@ -1,9 +1,9 @@
-import { messageErreur, rafraichirIcones } from "../assets/api.js?v=9";
-import { rendreAdmin } from "./admin.js?v=9";
-import { rendreCompte } from "./account.js?v=9";
-import { rendreMarchand } from "./merchant.js?v=9";
-import { initialiser, verifierConfiguration, app, vide } from "./shared.js?v=9";
-import { rendreAccueil, rendreCheckout, rendrePanier, rendreProduit } from "./storefront.js?v=9";
+import { messageErreur, rafraichirIcones } from "../assets/api.js?v=10";
+import { rendreAdmin } from "./admin.js?v=10";
+import { rendreCompte } from "./account.js?v=10";
+import { rendreMarchand } from "./merchant.js?v=10";
+import { initialiser, verifierConfiguration, app, vide } from "./shared.js?v=10";
+import { rendreAccueil, rendreCheckout, rendrePanier, rendreProduit } from "./storefront.js?v=10";
 
 const pages = {
   accueil: rendreAccueil,

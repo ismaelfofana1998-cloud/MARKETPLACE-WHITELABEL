@@ -8,7 +8,7 @@ import {
   rafraichirIcones,
   supabase,
   toast,
-} from "../assets/api.js?v=9";
+} from "../assets/api.js?v=10";
 import {
   actualiserCompteurPanier,
   app,
@@ -27,7 +27,7 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js?v=9";
+} from "./shared.js?v=10";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];

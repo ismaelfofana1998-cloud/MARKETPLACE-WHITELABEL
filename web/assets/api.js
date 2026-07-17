@@ -152,6 +152,8 @@ export function messageErreur(error, fallback = "Une erreur est survenue.") {
     [/Password should be at least/i, "Le mot de passe doit contenir au moins 8 caracteres."],
     [/duplicate key.*slug/i, "Cet identifiant est deja utilise."],
     [/Failed to fetch/i, "Connexion au service impossible. Verifie ta connexion internet."],
+    [/IKMS HTTP 401/i, "IKMS refuse la connexion. Verifie l'URL de base (/functions/v1/api-v1, pas /rest/v1) et la cle API client pro."],
+    [/non-2xx status code/i, "Le service distant a refuse l'action. Ouvre les missions IKMS pour voir l'erreur exacte."],
   ];
   return traductions.find(([pattern]) => pattern.test(message))?.[1] || message;
 }
