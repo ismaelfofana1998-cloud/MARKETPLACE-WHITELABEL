@@ -14,7 +14,7 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js?v=10";
+} from "../assets/api.js?v=11";
 import {
   app,
   badgeStatut,
@@ -27,7 +27,7 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js?v=10";
+} from "./shared.js?v=11";
 
 function demanderMotifAnnulationClient() {
   const motif = prompt("Motif de l'annulation");
