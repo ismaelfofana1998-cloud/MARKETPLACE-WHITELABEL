@@ -115,7 +115,9 @@ Deno.serve(async (req) => {
     const data = (resultat.data || {}) as Record<string, unknown>;
     const colis = Array.isArray(data.colis) ? data.colis[0] as Record<string, unknown> : null;
     if (!response.ok || !data.id_commande || !colis) {
-      const erreur = String(resultat.error || `IKMS HTTP ${response.status}`);
+      const erreur = response.status === 401
+        ? "IKMS HTTP 401 : URL de base ou cle client pro refusee. Utilise l'endpoint IKMS /functions/v1/api-v1, pas /rest/v1, et verifie la cle ik_live_..."
+        : String(resultat.error || `IKMS HTTP ${response.status}`);
       await admin.rpc("rpc_finaliser_mission_ikms", {
         p_mission_id: reclamation.mission_id,
         p_acteur_id: authData.user.id,

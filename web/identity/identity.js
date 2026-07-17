@@ -14,7 +14,7 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js?v=9";
+} from "../assets/api.js?v=10";
 
 const app = document.querySelector("#identity-app");
 const etat = {

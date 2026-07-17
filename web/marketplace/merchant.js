@@ -13,7 +13,7 @@ import {
   supabase,
   televerserImage,
   toast,
-} from "../assets/api.js?v=9";
+} from "../assets/api.js?v=10";
 import {
   app,
   badgeStatut,
@@ -22,7 +22,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=9";
+} from "./shared.js?v=10";
 
 let canalCommandes = null;
 
@@ -121,6 +121,61 @@ function prochaineAction(statut) {
     EN_PREPARATION: { statut: "PRETE", libelle: "Prete pour livraison", icone: "package-check" },
     PRETE: { statut: "EN_LIVRAISON", libelle: "Transmettre au livreur", icone: "truck" },
   }[statut];
+}
+
+function demanderMotifAnnulation(source = "marchand") {
+  const motif = prompt(`Motif de l'annulation (${source})`);
+  if (motif === null) return null;
+  const nettoye = motif.trim();
+  if (!nettoye) {
+    toast("Annulation interrompue : indique un motif.", true);
+    return null;
+  }
+  return nettoye;
+}
+
+async function executerActionCommande(donnees, commande, action, button) {
+  boutonOccupe(button, true, "Mise a jour...");
+  if (commande.statut === "PRETE") {
+    if (!donnees.integration?.actif || !donnees.integration?.cle_api_configuree) {
+      boutonOccupe(button, false);
+      return toast("Configure et active d'abord le compte client pro IKMS.", true);
+    }
+    const resultat = await supabase.functions.invoke("dispatch-livraison", { body: { commande_id: commande.id } });
+    boutonOccupe(button, false);
+    if (resultat.error || resultat.data?.error) {
+      return toast(messageErreur(resultat.error || { message: resultat.data.error }), true);
+    }
+    toast("Commande transmise a IKIGAI Livraison");
+    location.reload();
+    return;
+  }
+  const { error } = await supabase.rpc("rpc_changer_statut_commande_marketplace", {
+    p_commande_id: commande.id,
+    p_nouveau_statut: action.statut,
+    p_motif: null,
+  });
+  boutonOccupe(button, false);
+  if (error) return gererErreur(error);
+  await supabase.functions.invoke("sync-livraisons", { body: { commande_id: commande.id, notifications_uniquement: true } });
+  toast("Statut mis a jour");
+  location.reload();
+}
+
+async function annulerCommandeMarchand(commande, button) {
+  const motif = demanderMotifAnnulation("marchand");
+  if (!motif) return;
+  boutonOccupe(button, true, "Annulation...");
+  const { error } = await supabase.rpc("rpc_changer_statut_commande_marketplace", {
+    p_commande_id: commande.id,
+    p_nouveau_statut: "ANNULEE",
+    p_motif: motif,
+  });
+  boutonOccupe(button, false);
+  if (error) return gererErreur(error);
+  await supabase.functions.invoke("sync-livraisons", { body: { commande_id: commande.id, notifications_uniquement: true } });
+  toast("Commande annulee et stock restitue");
+  location.reload();
 }
 
 export async function rendreMarchand() {
@@ -225,12 +280,26 @@ function afficherApercu(donnees, nouvelles, stockFaible) {
 
 function afficherCommandes(donnees) {
   const zone = document.querySelector("#marchand-zone");
-  zone.innerHTML = `<div class="entete-page"><div><h2>Commandes</h2><p class="muted petit">Reception et preparation en temps reel</p></div><select id="filtre-commandes" class="btn btn-secondaire"><option value="">Tous les statuts</option><option>NOUVELLE</option><option>CONFIRMEE</option><option>EN_PREPARATION</option><option>PRETE</option><option>EN_LIVRAISON</option><option>LIVREE</option><option>ANNULEE</option></select></div><div id="commandes-liste"></div>`;
+  zone.innerHTML = `<div class="entete-page"><div><h2>Commandes</h2><p class="muted petit">Traite les commandes sans ouvrir chaque fiche.</p></div><select id="filtre-commandes" class="btn btn-secondaire"><option value="">Tous les statuts</option><option>NOUVELLE</option><option>CONFIRMEE</option><option>EN_PREPARATION</option><option>PRETE</option><option>EN_LIVRAISON</option><option>LIVREE</option><option>ANNULEE</option></select></div><div id="commandes-liste"></div>`;
   const afficherListe = () => {
     const filtre = document.querySelector("#filtre-commandes").value;
     const commandes = donnees.commandes.filter((commande) => !filtre || commande.statut === filtre);
-    document.querySelector("#commandes-liste").innerHTML = commandes.length ? `<div class="table-wrap"><table><thead><tr><th>Commande</th><th>Client</th><th>Date</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${commandes.map((commande) => `<tr><td><strong>${escapeHtml(commande.reference)}</strong></td><td>${escapeHtml(commande.achats?.adresses_livraison?.destinataire_nom || "Client")}</td><td>${formatDate(commande.cree_le, true)}</td><td>${fcfa(commande.total)}</td><td>${badgeStatut(commande.statut)}</td><td><button class="btn btn-secondaire" data-commande="${commande.id}">${icone("eye")} Ouvrir</button></td></tr>`).join("")}</tbody></table></div>` : vide("package-open", "Aucune commande dans cette vue");
+    document.querySelector("#commandes-liste").innerHTML = commandes.length ? `<div class="pile">${commandes.map((commande) => {
+      const action = prochaineAction(commande.statut);
+      const adresse = commande.achats?.adresses_livraison || {};
+      const mission = Array.isArray(commande.missions_logistiques) ? commande.missions_logistiques[0] : commande.missions_logistiques;
+      return `<article class="carte"><div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)} · ${escapeHtml(adresse.destinataire_nom || "Client")}</p><h3 style="margin:4px 0">${escapeHtml(commande.reference)}</h3><p class="muted petit" style="margin:0">${escapeHtml(adresse.commune || adresse.adresse || "")}${mission?.derniere_erreur ? ` · IKMS : ${escapeHtml(mission.derniere_erreur)}` : ""}</p></div><div style="text-align:right">${badgeStatut(commande.statut)}<strong style="display:block;margin-top:8px">${fcfa(commande.total)}</strong></div></div><div class="ligne-entre" style="margin-top:14px;align-items:flex-end"><div class="pile" style="gap:5px">${(commande.lignes_commande_marketplace || []).slice(0, 3).map((ligne) => `<span class="petit">${escapeHtml(ligne.nom_produit)} · ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</span>`).join("")}${(commande.lignes_commande_marketplace || []).length > 3 ? `<span class="muted petit">+${commande.lignes_commande_marketplace.length - 3} article(s)</span>` : ""}</div><div class="ligne" style="justify-content:flex-end">${action ? `<button class="btn btn-primaire" data-action-commande="${commande.id}">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" data-annuler-commande="${commande.id}">${icone("x-circle")} Annuler</button>` : ""}<button class="btn btn-secondaire" data-commande="${commande.id}">${icone("eye")} Details</button></div></div></article>`;
+    }).join("")}</div>` : vide("package-open", "Aucune commande dans cette vue");
     document.querySelectorAll("[data-commande]").forEach((button) => button.addEventListener("click", () => ouvrirCommande(donnees, button.dataset.commande)));
+    document.querySelectorAll("[data-action-commande]").forEach((button) => button.addEventListener("click", () => {
+      const commande = donnees.commandes.find((element) => element.id === button.dataset.actionCommande);
+      const action = prochaineAction(commande?.statut);
+      if (commande && action) executerActionCommande(donnees, commande, action, button);
+    }));
+    document.querySelectorAll("[data-annuler-commande]").forEach((button) => button.addEventListener("click", () => {
+      const commande = donnees.commandes.find((element) => element.id === button.dataset.annulerCommande);
+      if (commande) annulerCommandeMarchand(commande, button);
+    }));
     rafraichirIcones(document.querySelector("#commandes-liste"));
   };
   document.querySelector("#filtre-commandes").addEventListener("change", afficherListe);
@@ -245,34 +314,10 @@ function ouvrirCommande(donnees, commandeId) {
   document.querySelector("#dialog-title").textContent = commande.reference;
   document.querySelector("#dialog-zone").innerHTML = `<div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)}</p>${badgeStatut(commande.statut)}</div><strong>${fcfa(commande.total)}</strong></div><hr class="separateur"><div><h3>Articles</h3><div class="pile">${(commande.lignes_commande_marketplace || []).map((ligne) => `<div class="ligne"><img src="${escapeHtml(ligne.image_url || etat.configuration.hero_image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:6px"><div style="flex:1"><strong>${escapeHtml(ligne.nom_produit)}</strong><p class="muted petit" style="margin:4px 0">${escapeHtml(ligne.nom_variante)} - ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</p></div></div>`).join("")}</div></div><hr class="separateur"><div><h3>Livraison</h3><p class="muted petit">${escapeHtml(adresse.destinataire_nom || "Client")} - ${escapeHtml(adresse.telephone || "")}<br>${escapeHtml(adresse.adresse || "")} ${escapeHtml(adresse.commune || "")}<br>Zone IKMS : ${escapeHtml(adresse.code_zone || "Non renseignee")}<br>${escapeHtml(adresse.indications || "")}</p></div>${mission ? `<div class="bande-info"><div class="ligne-entre"><strong>IKIGAI Livraison</strong>${badgeStatut(mission.statut)}</div><p class="petit" style="margin:6px 0 0">Commande IKMS : ${escapeHtml(mission.commande_livraison_externe_id || "En attente")}<br>Statut IKMS : ${escapeHtml(mission.statut_ikms || "-")}${mission.code_ramassage ? `<br>Code ramassage : <strong>${escapeHtml(mission.code_ramassage)}</strong>` : ""}${mission.code_livraison ? `<br>Code livraison client : <strong>${escapeHtml(mission.code_livraison)}</strong>` : ""}</p></div>` : ""}${commande.note_client ? `<div class="bande-info"><strong>Note client</strong><p class="petit" style="margin:5px 0 0">${escapeHtml(commande.note_client)}</p></div>` : ""}<div class="ligne" style="margin-top:18px">${action ? `<button class="btn btn-primaire" id="action-commande">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" id="annuler-commande">${icone("x-circle")} Annuler</button>` : ""}</div>`;
   document.querySelector("#action-commande")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    boutonOccupe(button, true, "Mise a jour...");
-    if (commande.statut === "PRETE") {
-      if (!donnees.integration?.actif || !donnees.integration?.cle_api_configuree) {
-        boutonOccupe(button, false);
-        return toast("Configure et active d'abord le compte client pro IKMS.", true);
-      }
-      const resultat = await supabase.functions.invoke("dispatch-livraison", { body: { commande_id: commande.id } });
-      boutonOccupe(button, false);
-      if (resultat.error || resultat.data?.error) return toast(messageErreur(resultat.error || { message: resultat.data.error }), true);
-      toast("Commande transmise a IKIGAI Livraison");
-      location.reload();
-      return;
-    }
-    const { error } = await supabase.rpc("rpc_changer_statut_commande_marketplace", { p_commande_id: commande.id, p_nouveau_statut: action.statut, p_motif: null });
-    boutonOccupe(button, false);
-    if (error) return gererErreur(error);
-    await supabase.functions.invoke("sync-livraisons", { body: { commande_id: commande.id, notifications_uniquement: true } });
-    toast("Statut mis a jour");
-    location.reload();
+    executerActionCommande(donnees, commande, action, event.currentTarget);
   });
-  document.querySelector("#annuler-commande")?.addEventListener("click", async () => {
-    const motif = prompt("Motif de l'annulation") || "Annulation par le marchand";
-    const { error } = await supabase.rpc("rpc_changer_statut_commande_marketplace", { p_commande_id: commande.id, p_nouveau_statut: "ANNULEE", p_motif: motif });
-    if (error) return gererErreur(error);
-    await supabase.functions.invoke("sync-livraisons", { body: { commande_id: commande.id, notifications_uniquement: true } });
-    toast("Commande annulee et stock restitue");
-    location.reload();
+  document.querySelector("#annuler-commande")?.addEventListener("click", async (event) => {
+    annulerCommandeMarchand(commande, event.currentTarget);
   });
   rafraichirIcones(document.querySelector("#dialog-zone"));
   document.querySelector("#marchand-dialog").showModal();
