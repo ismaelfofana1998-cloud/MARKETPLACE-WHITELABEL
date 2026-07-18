@@ -4,7 +4,8 @@ declare
 begin
   foreach v_table in array array[
     'offres_organisations', 'configurations_boutique', 'categories_boutique',
-    'domaines_boutique', 'integrations_ikms_boutique'
+    'domaines_boutique', 'integrations_ikms_boutique',
+    'configurations_wave_organisation'
   ] loop
     if not exists (
       select 1 from pg_class c
@@ -28,6 +29,18 @@ begin
   ) then raise exception 'Contexte de panier absent'; end if;
 
   if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'identites'
+      and column_name = 'zone_livraison'
+  ) then raise exception 'Zone habituelle absente des identites'; end if;
+
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'commandes_marketplace'
+      and column_name = 'frais_livraison_a_confirmer'
+  ) then raise exception 'Marqueur de tarif IKMS definitif absent'; end if;
+
+  if not exists (
     select 1 from pg_indexes
     where schemaname = 'public' and indexname = 'paniers_actif_vitrine_idx'
   ) then raise exception 'Index d''isolation des paniers absent'; end if;
@@ -46,6 +59,24 @@ begin
   ) or has_function_privilege(
     'authenticated', 'public.rpc_lire_integration_ikms_boutique(uuid)', 'EXECUTE'
   ) then raise exception 'Secret IKMS d''etablissement expose'; end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.rpc_lire_configuration_ikms_catalogue()',
+    'EXECUTE'
+  ) then raise exception 'Cle IKMS du catalogue exposee'; end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.rpc_valider_panier(uuid,text,text,uuid)',
+    'EXECUTE'
+  ) then raise exception 'Ancienne validation a frais fixes encore exposee'; end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.rpc_valider_panier_tarife(uuid,uuid,text,text,uuid,jsonb)',
+    'EXECUTE'
+  ) then raise exception 'Validation serveur tarifee exposee au navigateur'; end if;
 
   if has_function_privilege(
     'anon', 'private.valider_ligne_panier_contexte()', 'EXECUTE'

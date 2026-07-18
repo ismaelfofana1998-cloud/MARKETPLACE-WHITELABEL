@@ -20,7 +20,8 @@ necessaire. GitHub Pages sert directement le dossier `web`.
 - roles `PROPRIETAIRE`, `ADMIN`, `GESTIONNAIRE`, `AGENT` et `MEMBRE` ;
 - espace SuperAdmin pour les tenants, boutiques, categories et le theme ;
 - invitations par lien et initialisation unique du premier SuperAdmin ;
-- intégration IKMS par établissement avec clé API chiffrée, suivi automatique et codes de livraison ;
+- intégration IKMS par établissement avec clé API chiffrée et suivi automatique ;
+- indicateurs de performance logistique et rapprochement des frais IKMS cote marchand ;
 - emails transactionnels persistants pour chaque statut de commande ;
 - application installable sur telephone.
 
@@ -38,13 +39,15 @@ pour le nouveau projet `kcwcxnfxhvjujmticuwv` :
    un établissement dès qu'un produit actif lui est attribué ;
 5. `20260716095047_white_label_data_api_privileges.sql` retire les écritures
    Data API directes sur les paniers, domaines et secrets d’établissement.
-
 Les fichiers du dossier `Codes supabase` restent conservés comme référence
 historique. Ils ne doivent pas être rejoués en plus de la migration de socle.
 
 Après migration, exécuter les tests `supabase/tests/white_label_schema_smoke.sql`
 et `supabase/tests/white_label_functional_smoke.sql`. Le test fonctionnel est
 transactionnel et termine par un `rollback`.
+
+L'analyse fonctionnelle d'IKMS et la feuille de route d'integration sont dans
+`ANALYSE_IKMS_SYNERGIES.md`.
 
 ## Connexion du site
 
@@ -73,6 +76,9 @@ Cette action ne fonctionne que tant qu'aucun administrateur actif n'existe.
 Les fonctions se trouvent dans `supabase/functions` :
 
 - `dispatch-livraison` : envoie une commande prete a IKIGAI Livraison ;
+- `estimer-tarifs-ikms` : estime la livraison au checkout depuis la grille IKMS ;
+- `zones-ikms` : extrait les zones disponibles depuis cette meme grille ;
+- `valider-panier-ikms` : reverifie les frais cote serveur et valide le panier ;
 - `sync-livraisons` : recupere les statuts IKMS et envoie les emails en attente ;
 - `inviter-membre` : variante avec envoi d'email automatique ;
 - `paiement-webhook` : reception securisee d'un statut de paiement.
@@ -84,6 +90,13 @@ Les cles IKMS des marchands et la cle Resend sont saisies depuis les interfaces
 Marchand et SuperAdmin. Elles sont chiffrees dans Supabase Vault et ne sont
 jamais renvoyees au navigateur.
 
+La grille de tarifs IKMS est conservee uniquement dans la memoire de
+`estimer-tarifs-ikms`, pendant une heure et par boutique. Aucune table ne la
+duplique. Si IKMS est indisponible, la derniere grille en memoire, meme perimee,
+est utilisee ; sans cache, le checkout indique que le prix sera confirme plus
+tard. Cette estimation n'est jamais utilisee pour facturer : seul
+`data.colis[].montant_livraison` renvoye par `POST /commandes` fait foi.
+
 Secrets encore utiles aux autres fonctions :
 
 - `IDENTITY_APP_URL`
@@ -92,8 +105,8 @@ Secrets encore utiles aux autres fonctions :
 ## Configuration IKMS
 
 1. Dans **Administration > Livraisons**, renseigner l'URL de base `api-v1`,
-   la page de creation des comptes pros et les codes de zones du tenant de
-   livraison.
+   la page de creation des comptes pros et la cle `ik_live_...` utilisee pour
+   lire le catalogue des zones. Les zones ne sont plus saisies manuellement.
 2. Dans le meme ecran, renseigner une cle Resend et un email expediteur dont le
    domaine est verifie, puis activer les emails de statut.
 3. Chaque établissement ouvre **Espace marchand > Livraison**, crée ou récupère
@@ -111,3 +124,34 @@ Le workflow `.github/workflows/pages.yml` publie automatiquement le dossier
 
 Dans GitHub, ouvrir **Settings > Pages** et verifier que la source est
 **GitHub Actions**.
+
+## Mise a jour zones, tarifs et Wave
+
+La migration
+`20260718185457_ikms_checkout_zones_wave_tenants.sql` ajoute la zone habituelle
+au compte client, securise la validation tarifee et isole les secrets Wave par
+tenant marchand.
+
+Trois Edge Functions completent le checkout :
+
+- `zones-ikms` extrait les zones de `GET /tarifs` sans les dupliquer en base ;
+- `estimer-tarifs-ikms` calcule l'estimation affichee au checkout ;
+- `valider-panier-ikms` reverifie le tarif cote serveur avant de valider le
+  panier.
+
+Dans **Administration > Livraisons**, renseigner l'URL `api-v1`, la page des
+comptes pros et une cle `ik_live_...` dediee au catalogue. Les zones sont
+extraites automatiquement puis gardees en cache une heure.
+
+Le catalogue et le panier affichent seulement « livraison a partir de ».
+L'estimation exacte apparait au checkout. Le montant definitif reste
+`data.colis[].montant_livraison` renvoye par `POST /commandes`.
+
+La zone habituelle du client est demandee a l'inscription. La zone, le
+telephone et l'adresse de ramassage du marchand sont demandes a l'ouverture
+de sa boutique, puis restent modifiables dans **Livraison**.
+
+Chaque organisation marchande dispose aussi de sa propre configuration Wave
+dans **Espace marchand > Paiements**. Les cles sont chiffrees dans Supabase
+Vault. Wave reste masque au checkout tant que le parcours multi-tenant, avec
+un paiement distinct par tenant, n'est pas active.
