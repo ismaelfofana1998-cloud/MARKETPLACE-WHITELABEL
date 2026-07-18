@@ -25,6 +25,15 @@ verify_jwt = false
 [functions.dispatch-livraison]
 verify_jwt = false
 
+[functions.estimer-tarifs-ikms]
+verify_jwt = true
+
+[functions.zones-ikms]
+verify_jwt = false
+
+[functions.valider-panier-ikms]
+verify_jwt = true
+
 [functions.sync-livraisons]
 verify_jwt = false
 

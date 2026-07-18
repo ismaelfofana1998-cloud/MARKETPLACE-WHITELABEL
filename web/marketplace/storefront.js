@@ -1,5 +1,6 @@
 import {
   boutonOccupe,
+  chargerZonesIkms,
   escapeHtml,
   fcfa,
   icone,
@@ -8,7 +9,7 @@ import {
   rafraichirIcones,
   supabase,
   toast,
-} from "../assets/api.js?v=11";
+} from "../assets/api.js?v=15";
 import {
   actualiserCompteurPanier,
   app,
@@ -27,7 +28,7 @@ import {
   gererErreur,
   normaliserProduit,
   vide,
-} from "./shared.js?v=11";
+} from "./shared.js?v=15";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -388,7 +389,7 @@ export async function rendreProduit() {
           ${variantes.length > 1 ? `<div class="champ"><label>Option</label><select id="variante">${variantes.map((variante) => `<option value="${variante.id}">${escapeHtml(variante.nom)}${variante.prix ? ` - ${fcfa(variante.prix)}` : ""}</option>`).join("")}</select></div>` : ""}
           <p class="petit ${produit.stock > 0 ? "muted" : "badge-danger"}">${produit.stock > 0 ? `${produit.stock} article${produit.stock > 1 ? "s" : ""} disponible${produit.stock > 1 ? "s" : ""}` : "Stock epuise"}</p>
           <div class="ligne"><div class="stepper"><button id="moins" aria-label="Diminuer">${icone("minus")}</button><span id="quantite">1</span><button id="plus" aria-label="Augmenter">${icone("plus")}</button></div><button class="btn btn-primaire" style="flex:1" id="ajouter" ${produit.stock <= 0 ? "disabled" : ""}>${icone("shopping-bag")} Ajouter au panier</button><button class="btn btn-secondaire" id="partager" aria-label="Partager">${icone("share-2")}</button></div>
-          <div class="carte achat-garanties" style="margin-top:18px"><div class="ligne"><span class="badge badge-succes">${icone("truck")}</span><div><strong>Livraison suivie par IKIGAI</strong><p class="muted petit" style="margin:4px 0 0">Frais de base : ${fcfa(produit.boutique?.frais_livraison_base)}</p></div></div><div class="engagement-produit"><span>${icone("shield-check")} Paiement et commande securises</span><span>${icone("rotate-ccw")} Historique et retour depuis votre compte</span></div></div>
+          <div class="carte achat-garanties" style="margin-top:18px"><div class="ligne"><span class="badge badge-succes">${icone("truck")}</span><div><strong>Livraison suivie par IKIGAI</strong><p class="muted petit" style="margin:4px 0 0">A partir de ${fcfa(etat.configuration.livraison_a_partir_de || 1000)}. Estimation selon votre zone au checkout.</p></div></div><div class="engagement-produit"><span>${icone("shield-check")} Paiement et commande securises</span><span>${icone("rotate-ccw")} Historique et retour depuis votre compte</span></div></div>
         </div>
       </section>
       <section class="section"><div class="carte boutique-carte"><img class="boutique-logo" src="${escapeHtml(produit.boutique?.logo_url || images[0])}" alt=""><div><h2>${escapeHtml(produit.boutique?.nom)}</h2><p class="muted petit">${escapeHtml(produit.boutique?.description || produit.boutique?.adresse || "Marchand IKIGAI Market")}</p><a class="btn btn-secondaire" href="./index.html?boutique=${produit.boutique_id}#produits">Voir ses produits</a></div></div></section>
@@ -468,8 +469,8 @@ export async function rendrePanier() {
     const lignes = await chargerLignesPanier();
     const sousTotal = lignes.reduce((total, ligne) => total + ligne.produit.prix_effectif * ligne.quantite, 0);
     const boutiques = new Map(lignes.map((ligne) => [ligne.produit.boutique.id, ligne.produit.boutique]));
-    const frais = [...boutiques.values()].reduce((total, boutique) => total + Number(boutique.frais_livraison_base || 0), 0);
-    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Mon panier</h1><p class="muted">${lignes.length} produit${lignes.length > 1 ? "s" : ""}</p></div></div>${lignes.length ? `<div class="deux-colonnes"><section>${lignes.map((ligne) => `<article class="panier-ligne"><a href="./produit.html?id=${ligne.produit.id}"><img src="${escapeHtml(ligne.produit.image)}" alt="${escapeHtml(ligne.produit.nom)}"></a><div><p class="petit muted">${escapeHtml(ligne.produit.boutique?.nom)}</p><h3>${escapeHtml(ligne.produit.nom)}</h3>${ligne.variante?.nom !== "Standard" ? `<p class="petit muted">${escapeHtml(ligne.variante?.nom)}</p>` : ""}<strong>${fcfa(ligne.produit.prix_effectif)}</strong>${ligne.quantite > ligne.stock ? '<p class="petit" style="color:var(--danger)">Stock insuffisant</p>' : ""}</div><div class="actions-ligne pile"><div class="stepper"><button data-moins="${ligne.id}" aria-label="Diminuer">${icone("minus")}</button><span>${ligne.quantite}</span><button data-plus="${ligne.id}" aria-label="Augmenter">${icone("plus")}</button></div><button class="btn btn-texte" data-supprimer="${ligne.id}">${icone("trash-2")} Retirer</button></div></article>`).join("")}</section><aside class="carte resume-sticky"><h2>Resume</h2><div class="ligne-entre"><span>Sous-total</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:10px"><span>Livraison</span><strong>${fcfa(frais)}</strong></div><hr class="separateur"><div class="ligne-entre"><strong>Total estime</strong><strong>${fcfa(sousTotal + frais)}</strong></div><a class="btn btn-primaire btn-bloc" style="margin-top:18px" href="./checkout.html">Commander ${icone("arrow-right")}</a><a class="btn btn-secondaire btn-bloc" style="margin-top:8px" href="./index.html">Continuer mes achats</a></aside></div>` : vide("shopping-bag", "Ton panier est vide", "Explore les boutiques et ajoute les produits qui te plaisent.", '<a class="btn btn-primaire" href="./index.html">Voir le catalogue</a>')}</main>`, { actif: "panier" });
+    const minimumLivraison = Number(etat.configuration.livraison_a_partir_de || 1000);
+    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Mon panier</h1><p class="muted">${lignes.length} produit${lignes.length > 1 ? "s" : ""}</p></div></div>${lignes.length ? `<div class="deux-colonnes"><section>${lignes.map((ligne) => `<article class="panier-ligne"><a href="./produit.html?id=${ligne.produit.id}"><img src="${escapeHtml(ligne.produit.image)}" alt="${escapeHtml(ligne.produit.nom)}"></a><div><p class="petit muted">${escapeHtml(ligne.produit.boutique?.nom)}</p><h3>${escapeHtml(ligne.produit.nom)}</h3>${ligne.variante?.nom !== "Standard" ? `<p class="petit muted">${escapeHtml(ligne.variante?.nom)}</p>` : ""}<strong>${fcfa(ligne.produit.prix_effectif)}</strong>${ligne.quantite > ligne.stock ? '<p class="petit" style="color:var(--danger)">Stock insuffisant</p>' : ""}</div><div class="actions-ligne pile"><div class="stepper"><button data-moins="${ligne.id}" aria-label="Diminuer">${icone("minus")}</button><span>${ligne.quantite}</span><button data-plus="${ligne.id}" aria-label="Augmenter">${icone("plus")}</button></div><button class="btn btn-texte" data-supprimer="${ligne.id}">${icone("trash-2")} Retirer</button></div></article>`).join("")}</section><aside class="carte resume-sticky"><h2>Resume</h2><div class="ligne-entre"><span>Sous-total</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:10px"><span>Livraison</span><strong>A partir de ${fcfa(minimumLivraison)}</strong></div><p class="muted petit" style="margin:8px 0 0">Le prix est calcule selon votre zone avant la confirmation.</p><hr class="separateur"><div class="ligne-entre"><strong>Total</strong><strong>${fcfa(sousTotal)} + livraison</strong></div><a class="btn btn-primaire btn-bloc" style="margin-top:18px" href="./checkout.html">Commander ${icone("arrow-right")}</a><a class="btn btn-secondaire btn-bloc" style="margin-top:8px" href="./index.html">Continuer mes achats</a></aside></div>` : vide("shopping-bag", "Ton panier est vide", "Explore les boutiques et ajoute les produits qui te plaisent.", '<a class="btn btn-primaire" href="./index.html">Voir le catalogue</a>')}</main>`, { actif: "panier" });
     const modifier = async (id, quantite) => {
       const { error } = await supabase.rpc("rpc_modifier_ligne_panier", { p_ligne_id: id, p_quantite: quantite });
       if (error) return gererErreur(error);
@@ -494,21 +495,66 @@ export async function rendreCheckout() {
   if (!etat.session) return demanderConnexion("./checkout.html");
   coquille('<main class="conteneur"><div class="vide">Preparation de la commande...</div></main>', { actif: "panier" });
   try {
-    const [lignes, profilResultat, adressesResultat] = await Promise.all([
+    const [lignes, profilResultat, adressesResultat, catalogueZones] = await Promise.all([
       chargerLignesPanier(),
-      supabase.from("identites").select("prenom, nom, telephone").eq("id", etat.session.user.id).single(),
+      supabase.from("identites").select("prenom, nom, telephone, zone_livraison").eq("id", etat.session.user.id).single(),
       supabase.from("adresses_livraison").select("*").eq("identite_id", etat.session.user.id).order("principale", { ascending: false }).order("cree_le", { ascending: false }),
+      chargerZonesIkms(etat.configuration),
     ]);
     if (!lignes.length) { location.href = "./panier.html"; return; }
     const profil = profilResultat.data || {};
     const adresses = adressesResultat.data || [];
-    const zones = Array.isArray(etat.configuration.zones_livraison) ? etat.configuration.zones_livraison : [];
+    const zones = catalogueZones.zones;
     const optionsZones = (selection = "") => `${selection && !zones.some((zone) => zone.code === selection) ? `<option value="${escapeHtml(selection)}" selected>${escapeHtml(selection)}</option>` : ""}${zones.map((zone) => `<option value="${escapeHtml(zone.code)}" ${zone.code === selection ? "selected" : ""}>${escapeHtml(zone.nom || zone.code)}</option>`).join("")}`;
     const sousTotal = lignes.reduce((total, ligne) => total + ligne.produit.prix_effectif * ligne.quantite, 0);
     const boutiques = new Map(lignes.map((ligne) => [ligne.produit.boutique.id, ligne.produit.boutique]));
-    const frais = [...boutiques.values()].reduce((total, boutique) => total + Number(boutique.frais_livraison_base || 0), 0);
-    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Finaliser la commande</h1><p class="muted">Livraison et paiement</p></div></div><form id="checkout-form" class="deux-colonnes"><section class="pile"><div class="carte"><h2>Adresse de livraison</h2>${adresses.length ? `<div class="champ"><label>Adresse enregistree</label><select name="adresse_id" id="adresse-select">${adresses.map((adresse) => `<option value="${adresse.id}">${escapeHtml(adresse.libelle)} - ${escapeHtml(adresse.adresse)}</option>`).join("")}<option value="nouvelle">Utiliser une nouvelle adresse</option></select></div><div class="champ" id="zone-adresse-existante"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone_existante" required><option value="">Choisir une zone</option>${optionsZones(adresses[0]?.code_zone || "")}</select>` : `<input name="code_zone_existante" value="${escapeHtml(adresses[0]?.code_zone)}" placeholder="COCODY" required>`}</div>` : '<input type="hidden" name="adresse_id" value="nouvelle">'}<div id="nouvelle-adresse" class="${adresses.length ? "masque" : ""}"><div class="grille-deux"><div class="champ"><label>Nom du destinataire</label><input name="destinataire_nom" value="${escapeHtml(`${profil.prenom || ""} ${profil.nom || ""}`.trim())}"></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" value="${escapeHtml(profil.telephone || "")}"></div></div><div class="champ"><label>Adresse</label><input name="adresse" placeholder="Quartier, rue, repere"></div><div class="grille-deux"><div class="champ"><label>Commune</label><input name="commune" placeholder="Cocody"></div><div class="champ"><label>Libelle</label><input name="libelle" value="Domicile"></div></div><div class="champ"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone"><option value="">Choisir une zone</option>${optionsZones()}</select>` : '<input name="code_zone" placeholder="COCODY">'}</div><div class="champ"><label>Indications</label><textarea name="indications" placeholder="Batiment, portail, point de repere..."></textarea></div></div></div><div class="carte"><h2>Paiement</h2><label class="case"><input type="radio" name="mode_paiement" value="A_LA_LIVRAISON" checked><span><strong>Paiement a la livraison</strong><br><span class="muted petit">Payez au moment de la remise de votre commande.</span></span></label><div class="bande-info bande-attention petit" style="margin-top:14px">Wave, Orange Money et carte seront proposes des que les comptes commercants seront configures.</div></div><div class="carte"><h2>Instructions</h2><div class="champ"><label>Note pour le marchand ou le livreur</label><textarea name="note" placeholder="Facultatif"></textarea></div></div></section><aside class="carte resume-sticky"><h2>Votre commande</h2><div class="pile">${lignes.map((ligne) => `<div class="ligne-entre petit"><span>${ligne.quantite} x ${escapeHtml(ligne.produit.nom)}</span><strong>${fcfa(ligne.produit.prix_effectif * ligne.quantite)}</strong></div>`).join("")}</div><hr class="separateur"><div class="ligne-entre"><span>Articles</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:9px"><span>Livraison (${boutiques.size})</span><strong>${fcfa(frais)}</strong></div><hr class="separateur"><div class="ligne-entre"><strong>Total</strong><strong style="font-size:20px">${fcfa(sousTotal + frais)}</strong></div><button class="btn btn-primaire btn-bloc" style="margin-top:18px" id="confirmer">${icone("check")} Confirmer la commande</button><p class="muted petit" style="margin:12px 0 0">Le stock et le montant sont verifies une derniere fois avant validation.</p></aside></form></main>`, { actif: "panier" });
+    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Finaliser la commande</h1><p class="muted">Livraison et paiement</p></div></div><form id="checkout-form" class="deux-colonnes"><section class="pile"><div class="carte"><h2>Adresse de livraison</h2>${adresses.length ? `<div class="champ"><label>Adresse enregistree</label><select name="adresse_id" id="adresse-select">${adresses.map((adresse) => `<option value="${adresse.id}">${escapeHtml(adresse.libelle)} - ${escapeHtml(adresse.adresse)}</option>`).join("")}<option value="nouvelle">Utiliser une nouvelle adresse</option></select></div><div class="champ" id="zone-adresse-existante"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone_existante" required><option value="">Choisir une zone</option>${optionsZones(adresses[0]?.code_zone || profil.zone_livraison || "")}</select>` : `<input name="code_zone_existante" value="${escapeHtml(adresses[0]?.code_zone || profil.zone_livraison)}" placeholder="COCODY" required>`}</div>` : '<input type="hidden" name="adresse_id" value="nouvelle">'}<div id="nouvelle-adresse" class="${adresses.length ? "masque" : ""}"><div class="grille-deux"><div class="champ"><label>Nom du destinataire</label><input name="destinataire_nom" value="${escapeHtml(`${profil.prenom || ""} ${profil.nom || ""}`.trim())}"></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" value="${escapeHtml(profil.telephone || "")}"></div></div><div class="champ"><label>Adresse</label><input name="adresse" placeholder="Quartier, rue, repere"></div><div class="grille-deux"><div class="champ"><label>Commune</label><input name="commune" placeholder="Cocody"></div><div class="champ"><label>Libelle</label><input name="libelle" value="Domicile"></div></div><div class="champ"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone"><option value="">Choisir une zone</option>${optionsZones(profil.zone_livraison || "")}</select>` : `<input name="code_zone" value="${escapeHtml(profil.zone_livraison)}" placeholder="COCODY">`}</div><div class="champ"><label>Indications</label><textarea name="indications" placeholder="Batiment, portail, point de repere..."></textarea></div></div></div><div class="carte"><h2>Paiement</h2><label class="case"><input type="radio" name="mode_paiement" value="A_LA_LIVRAISON" checked><span><strong>Paiement a la livraison</strong><br><span class="muted petit">Payez au moment de la remise de votre commande.</span></span></label><div class="bande-info bande-attention petit" style="margin-top:14px">Wave sera active separement pour chaque tenant marchand.</div></div><div class="carte"><h2>Instructions</h2><div class="champ"><label>Note pour le marchand ou le livreur</label><textarea name="note" placeholder="Facultatif"></textarea></div></div></section><aside class="carte resume-sticky"><h2>Votre commande</h2><div class="pile">${lignes.map((ligne) => `<div class="ligne-entre petit"><span>${ligne.quantite} x ${escapeHtml(ligne.produit.nom)}</span><strong>${fcfa(ligne.produit.prix_effectif * ligne.quantite)}</strong></div>`).join("")}</div><hr class="separateur"><div class="ligne-entre"><span>Articles</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:9px"><span>Livraison estimee (${boutiques.size})</span><strong id="frais-livraison-estimes">—</strong></div><p class="muted petit" id="message-estimation-livraison" aria-live="polite" style="margin:8px 0 0">Choisissez une zone pour estimer la livraison.</p><hr class="separateur"><div class="ligne-entre"><strong>Total estime</strong><strong id="total-checkout-estime" style="font-size:20px">—</strong></div><button class="btn btn-primaire btn-bloc" style="margin-top:18px" id="confirmer">${icone("check")} Confirmer la commande</button><p class="muted petit" style="margin:12px 0 0">L'estimation est reverifiee cote serveur. Le tarif renvoye ensuite par IKMS lors de la prise en charge fait foi.</p></aside></form></main>`, { actif: "panier" });
     const adresseSelect = document.querySelector("#adresse-select");
+    let numeroEstimation = 0;
+    let minuterieEstimation;
+    const zoneSelectionnee = () => {
+      const nouvelleAdresse = !adresseSelect || adresseSelect.value === "nouvelle";
+      const champ = document.querySelector(nouvelleAdresse ? '[name="code_zone"]' : '[name="code_zone_existante"]');
+      return champ?.value?.trim().toUpperCase() || "";
+    };
+    const afficherEstimation = (montant, message) => {
+      const fraisElement = document.querySelector("#frais-livraison-estimes");
+      const totalElement = document.querySelector("#total-checkout-estime");
+      const messageElement = document.querySelector("#message-estimation-livraison");
+      if (fraisElement) fraisElement.textContent = montant === null ? "A confirmer" : fcfa(montant);
+      if (totalElement) totalElement.textContent = montant === null ? `${fcfa(sousTotal)} + livraison` : fcfa(sousTotal + montant);
+      if (messageElement) messageElement.textContent = message;
+    };
+    const actualiserEstimation = async () => {
+      const zoneArrivee = zoneSelectionnee();
+      const numero = ++numeroEstimation;
+      if (!zoneArrivee) {
+        afficherEstimation(null, "Choisissez une zone pour estimer la livraison.");
+        return;
+      }
+      afficherEstimation(null, "Calcul de l'estimation IKMS...");
+      const { data, error } = await supabase.functions.invoke("estimer-tarifs-ikms", {
+        body: {
+          boutique_ids: [...boutiques.keys()],
+          zone_arrivee: zoneArrivee,
+        },
+      });
+      if (numero !== numeroEstimation) return;
+      const estimation = data?.data;
+      if (error || !estimation?.complete || !Number.isFinite(Number(estimation.montant_total))) {
+        afficherEstimation(null, "Prix calcule a la confirmation de la livraison.");
+        return;
+      }
+      const montant = Number(estimation.montant_total);
+      afficherEstimation(
+        montant,
+        `Frais de livraison estimes : ${fcfa(montant)} — confirmes a la validation.`,
+      );
+    };
+    const planifierEstimation = () => {
+      clearTimeout(minuterieEstimation);
+      minuterieEstimation = setTimeout(actualiserEstimation, 250);
+    };
     adresseSelect?.addEventListener("change", () => {
       const nouvelle = adresseSelect.value === "nouvelle";
       document.querySelector("#nouvelle-adresse").classList.toggle("masque", !nouvelle);
@@ -516,7 +562,13 @@ export async function rendreCheckout() {
       const adresse = adresses.find((element) => element.id === adresseSelect.value);
       const champ = document.querySelector('[name="code_zone_existante"]');
       if (champ && adresse) champ.value = adresse.code_zone || "";
+      planifierEstimation();
     });
+    document.querySelectorAll('[name="code_zone"], [name="code_zone_existante"]').forEach((champ) => {
+      champ.addEventListener("change", planifierEstimation);
+      champ.addEventListener("input", planifierEstimation);
+    });
+    planifierEstimation();
     document.querySelector("#checkout-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const button = document.querySelector("#confirmer");
@@ -548,13 +600,17 @@ export async function rendreCheckout() {
         }
       }
       boutonOccupe(button, true, "Validation...");
-      const { data: achatId, error } = await supabase.rpc("rpc_valider_panier", {
-        p_adresse_id: adresseId,
-        p_mode_paiement: valeurs.mode_paiement,
-        p_note: valeurs.note?.trim() || null,
-        p_boutique_contexte_id: boutiqueContexteId(),
+      const { data: validation, error } = await supabase.functions.invoke("valider-panier-ikms", {
+        body: {
+          adresse_id: adresseId,
+          mode_paiement: valeurs.mode_paiement,
+          note: valeurs.note?.trim() || null,
+          boutique_contexte_id: boutiqueContexteId(),
+        },
       });
       if (error) { boutonOccupe(button, false); return gererErreur(error); }
+      const achatId = validation?.data?.achat_id;
+      if (!achatId) { boutonOccupe(button, false); return toast("La commande n'a pas pu etre creee.", true); }
       await supabase.functions.invoke("sync-livraisons", { body: { achat_id: achatId, notifications_uniquement: true } });
       toast("Commande confirmee");
       location.href = `./compte.html?commande=${achatId}`;

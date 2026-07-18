@@ -1,5 +1,6 @@
 import {
   boutonOccupe,
+  chargerZonesIkms,
   escapeHtml,
   fcfa,
   formatDate,
@@ -13,7 +14,7 @@ import {
   supabase,
   televerserImage,
   toast,
-} from "../assets/api.js?v=11";
+} from "../assets/api.js?v=15";
 import {
   app,
   badgeStatut,
@@ -22,7 +23,12 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=11";
+} from "./shared.js?v=15";
+import {
+  rendreCodesMission,
+  rendreComparaisonFrais,
+  rendreParcoursLivraison,
+} from "./logistics.js?v=15";
 
 let canalCommandes = null;
 
@@ -49,8 +55,35 @@ async function verifierAccesAdministration() {
   return data;
 }
 
-function afficherOnboarding() {
-  coquille(`<main class="conteneur conteneur-etroit"><div class="entete-page"><div><h1>Ouvrir une boutique</h1><p class="muted">Cree ton organisation marchande et commence ton catalogue.</p></div></div><form class="carte" id="onboarding-form"><div class="champ"><label>Nom commercial</label><input name="nom" required autocomplete="organization"></div><div class="champ"><label>Adresse web</label><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required><span class="champ-aide">Lettres minuscules, chiffres et tirets.</span></div><div class="champ"><label>Type d'activite</label><select name="type"><option value="MARCHAND">Commerce</option><option value="RESTAURANT">Restaurant</option></select></div><button class="btn btn-primaire btn-bloc" id="creer-espace">${icone("store")} Creer mon espace marchand</button></form></main>`, { mode: "gestion", espace: "Espace marchand" });
+function normaliserTelephoneRamassage(valeur) {
+  let telephone = String(valeur || "").replace(/\D/g, "");
+  if (telephone.length === 13 && telephone.startsWith("225")) telephone = telephone.slice(3);
+  return telephone;
+}
+
+function champsRamassage(catalogueZones, valeurs = {}) {
+  const options = (catalogueZones.zones || [])
+    .map((zone) => `<option value="${escapeHtml(zone.code)}" ${zone.code === valeurs.zone_depart ? "selected" : ""}>${escapeHtml(zone.nom || zone.code)}</option>`)
+    .join("");
+  return `<div class="champ"><label>Zone de ramassage habituelle</label>${options ? `<select name="zone_depart" required><option value="">Choisir une zone</option>${options}</select>` : `<input name="zone_depart" value="${escapeHtml(valeurs.zone_depart)}" placeholder="COCODY" required>`}<span class="champ-aide">Cette zone IKMS servira au calcul de la livraison et restera modifiable.</span></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(valeurs.expediteur_tel)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(valeurs.expediteur_adresse)}" placeholder="Quartier, rue, repere" required></div></div>`;
+}
+
+async function initialiserRamassageBoutique(boutiqueId, valeurs) {
+  return supabase.rpc("rpc_configurer_integration_ikms_boutique", {
+    p_boutique_id: boutiqueId,
+    p_zone_depart: String(valeurs.zone_depart || "").trim().toUpperCase(),
+    p_expediteur_nom: String(valeurs.nom || "").trim(),
+    p_expediteur_tel: normaliserTelephoneRamassage(valeurs.expediteur_tel),
+    p_expediteur_adresse: String(valeurs.expediteur_adresse || "").trim(),
+    p_mode_paiement: "SANS_PAIEMENT",
+    p_api_key: null,
+    p_actif: false,
+  });
+}
+
+async function afficherOnboarding() {
+  const catalogueZones = await chargerZonesIkms(etat.configuration);
+  coquille(`<main class="conteneur conteneur-etroit"><div class="entete-page"><div><h1>Ouvrir une boutique</h1><p class="muted">Cree ton organisation marchande et commence ton catalogue.</p></div></div><form class="carte" id="onboarding-form"><div class="champ"><label>Nom commercial</label><input name="nom" required autocomplete="organization"></div><div class="champ"><label>Adresse web</label><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required><span class="champ-aide">Lettres minuscules, chiffres et tirets.</span></div><div class="champ"><label>Type d'activite</label><select name="type"><option value="MARCHAND">Commerce</option><option value="RESTAURANT">Restaurant</option></select></div>${champsRamassage(catalogueZones)}<button class="btn btn-primaire btn-bloc" id="creer-espace">${icone("store")} Creer mon espace marchand</button></form></main>`, { mode: "gestion", espace: "Espace marchand" });
   const nom = document.querySelector('[name="nom"]');
   const slug = document.querySelector('[name="slug"]');
   let modifie = false;
@@ -64,10 +97,16 @@ function afficherOnboarding() {
     const organisation = await supabase.rpc("rpc_creer_organisation", { p_nom: valeurs.nom, p_slug: valeurs.slug, p_type: valeurs.type });
     if (organisation.error) { boutonOccupe(button, false); return gererErreur(organisation.error); }
     const boutique = await supabase.rpc("rpc_creer_boutique_marketplace", { p_organisation_id: organisation.data, p_nom: valeurs.nom, p_slug: valeurs.slug });
+    if (boutique.error) { boutonOccupe(button, false); return gererErreur(boutique.error); }
+    const ramassage = await initialiserRamassageBoutique(boutique.data, valeurs);
     boutonOccupe(button, false);
-    if (boutique.error) return gererErreur(boutique.error);
+    if (ramassage.error) {
+      toast("Boutique creee. Completez la zone de ramassage dans Livraison.", true);
+      location.href = "./marchand.html#livraison";
+      return;
+    }
     toast("Espace marchand cree");
-    location.reload();
+    location.href = "./marchand.html#livraison";
   });
   rafraichirIcones(app);
 }
@@ -79,9 +118,9 @@ async function chargerEspace(organisation, boutiqueId = null) {
   if (!boutiques.length) return { boutique: null, boutiques: [] };
   const boutique = boutiques.find((element) => element.id === boutiqueId) || boutiques[0];
   await supabase.functions.invoke("sync-livraisons", { body: {} }).catch(() => null);
-  const [produits, commandes, categories, categoriesBoutique, membres, integration, offre, configurationSite, domaines] = await Promise.all([
+  const [produits, commandes, categories, categoriesBoutique, membres, integration, offre, configurationSite, domaines, wave] = await Promise.all([
     supabase.from("produits").select("id, boutique_id, categorie_id, categorie_boutique_id, nom, description, marque, prix, prix_barre, images, statut, cree_le, variantes_produit(id, nom, sku, actif, stocks(quantite, seuil_alerte))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }),
-    supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications, code_zone)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), historique_statuts_commande(ancien_statut, nouveau_statut, source, cree_le), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_ramassage, code_livraison, montant_livraison, derniere_synchronisation, derniere_erreur))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
+    supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, frais_livraison_a_confirmer, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications, code_zone)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_ramassage, code_livraison, montant_livraison, derniere_synchronisation, derniere_erreur))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
     supabase.from("categories_marketplace").select("id, nom").eq("actif", true).order("ordre"),
     supabase.from("categories_boutique").select("id, boutique_id, nom, slug, description, image_url, ordre, actif").eq("boutique_id", boutique.id).order("ordre").order("nom"),
     supabase.from("membres_organisation").select("identite_id, role, statut, identites(prenom, nom, email)").eq("organisation_id", organisation.id).order("cree_le"),
@@ -89,8 +128,9 @@ async function chargerEspace(organisation, boutiqueId = null) {
     supabase.from("offres_organisations").select("offre, white_label_actif, domaines_personnalises, max_etablissements, active").eq("organisation_id", organisation.id).maybeSingle(),
     supabase.from("configurations_boutique").select("*").eq("boutique_id", boutique.id).maybeSingle(),
     supabase.from("domaines_boutique").select("id, boutique_id, domaine, statut, principal, jeton_verification, verifie_le").eq("boutique_id", boutique.id).order("principal", { ascending: false }),
+    supabase.from("configurations_wave_organisation").select("organisation_id, actif, api_key_configuree, signing_secret_configure, api_key_suffixe, modifie_le").eq("organisation_id", organisation.id).maybeSingle(),
   ]);
-  const erreur = [produits.error, commandes.error, categories.error, categoriesBoutique.error, membres.error, integration.error, offre.error, configurationSite.error, domaines.error].find(Boolean);
+  const erreur = [produits.error, commandes.error, categories.error, categoriesBoutique.error, membres.error, integration.error, offre.error, configurationSite.error, domaines.error, wave.error].find(Boolean);
   if (erreur) throw erreur;
   return {
     boutique,
@@ -104,6 +144,7 @@ async function chargerEspace(organisation, boutiqueId = null) {
     offre: offre.data || { offre: "STANDARD", max_etablissements: 1 },
     configurationSite: configurationSite.data,
     domaines: domaines.data || [],
+    wave: wave.data || {},
   };
 }
 
@@ -186,25 +227,29 @@ export async function rendreMarchand() {
       chargerAccesMarchands(),
       verifierAccesAdministration(),
     ]);
-    if (!organisations.length) { afficherOnboarding(); return; }
+    if (!organisations.length) { await afficherOnboarding(); return; }
     const organisationId = new URLSearchParams(location.search).get("organisation") || organisations[0].id;
     const organisation = organisations.find((element) => element.id === organisationId) || organisations[0];
     const boutiqueId = new URLSearchParams(location.search).get("boutique");
     const donnees = await chargerEspace(organisation, boutiqueId);
-    if (!donnees.boutique) { afficherCreationBoutique(organisation); return; }
+    if (!donnees.boutique) { await afficherCreationBoutique(organisation); return; }
     afficherTableauMarchand(organisations, organisation, donnees, adminPlateforme);
   } catch (error) {
     coquille(`<main class="conteneur">${vide("triangle-alert", "Espace marchand indisponible", messageErreur(error))}</main>`, { mode: "gestion", espace: "Espace marchand" });
   }
 }
 
-function afficherCreationBoutique(organisation) {
-  coquille(`<main class="conteneur conteneur-etroit"><div class="entete-page"><div><h1>Creer la boutique ${escapeHtml(organisation.nom)}</h1><p class="muted">L'organisation existe. Il reste a creer sa vitrine commerciale.</p></div></div><form class="carte" id="boutique-create"><div class="champ"><label>Nom de la boutique</label><input name="nom" value="${escapeHtml(organisation.nom)}" required></div><div class="champ"><label>Adresse web</label><input name="slug" value="${escapeHtml(organisation.slug)}" required></div><button class="btn btn-primaire btn-bloc">Creer la boutique</button></form></main>`, { mode: "gestion", espace: "Espace marchand" });
+async function afficherCreationBoutique(organisation) {
+  const catalogueZones = await chargerZonesIkms(etat.configuration);
+  coquille(`<main class="conteneur conteneur-etroit"><div class="entete-page"><div><h1>Creer la boutique ${escapeHtml(organisation.nom)}</h1><p class="muted">L'organisation existe. Il reste a creer sa vitrine commerciale.</p></div></div><form class="carte" id="boutique-create"><div class="champ"><label>Nom de la boutique</label><input name="nom" value="${escapeHtml(organisation.nom)}" required></div><div class="champ"><label>Adresse web</label><input name="slug" value="${escapeHtml(organisation.slug)}" required></div>${champsRamassage(catalogueZones)}<button class="btn btn-primaire btn-bloc">Creer la boutique</button></form></main>`, { mode: "gestion", espace: "Espace marchand" });
   document.querySelector("#boutique-create").addEventListener("submit", async (event) => {
     event.preventDefault();
     const valeurs = Object.fromEntries(new FormData(event.currentTarget));
-    const { error } = await supabase.rpc("rpc_creer_boutique_marketplace", { p_organisation_id: organisation.id, p_nom: valeurs.nom, p_slug: valeurs.slug });
-    error ? gererErreur(error) : location.reload();
+    const boutique = await supabase.rpc("rpc_creer_boutique_marketplace", { p_organisation_id: organisation.id, p_nom: valeurs.nom, p_slug: valeurs.slug });
+    if (boutique.error) return gererErreur(boutique.error);
+    const ramassage = await initialiserRamassageBoutique(boutique.data, valeurs);
+    if (ramassage.error) toast("Boutique creee. Completez la zone dans Livraison.", true);
+    location.href = "./marchand.html#livraison";
   });
 }
 
@@ -220,7 +265,7 @@ function afficherTableauMarchand(organisations, organisation, donnees, adminPlat
     : `./index.html?boutique=${donnees.boutique.id}#produits`;
   const peutAjouter = administrateur && donnees.boutiques.length < Number(donnees.offre.max_etablissements || 1);
   const navigation = `<nav class="navigation-desktop"><a href="./marchand.html#apercu" class="actif">Gestion</a><a href="${urlPublique}">Voir le site</a><a href="../identity/index.html#equipe">Equipe</a>${adminPlateforme ? '<a href="./admin.html#tableau">Administration</a>' : ""}</nav>`;
-  coquille(`<main class="conteneur"><div class="entete-page"><div><p class="muted petit">${escapeHtml(organisation.role)} · ${siteDedie ? "Site dédié" : "Marketplace"}</p><h1>${escapeHtml(donnees.boutique.nom)}</h1><p class="muted">Établissement ${escapeHtml(donnees.boutique.statut.toLowerCase())}</p></div><div class="entete-page-actions">${organisations.length > 1 ? `<select id="organisation-select" class="btn btn-secondaire">${organisations.map((element) => `<option value="${element.id}" ${element.id === organisation.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>` : ""}<select id="boutique-select" class="btn btn-secondaire" aria-label="Établissement">${donnees.boutiques.map((element) => `<option value="${element.id}" ${element.id === donnees.boutique.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>${peutAjouter ? `<button class="btn btn-secondaire" id="ajouter-établissement">${icone("plus")} Établissement</button>` : ""}<a class="btn btn-secondaire" href="${urlPublique}">${icone("external-link")} Voir le site</a></div></div><div class="kpis"><div class="stat"><span class="muted petit">Commandes</span><strong>${donnees.commandes.length}</strong></div><div class="stat"><span class="muted petit">A traiter</span><strong>${nouvelles}</strong></div><div class="stat"><span class="muted petit">Stock faible</span><strong>${stockFaible}</strong></div><div class="stat"><span class="muted petit">Ventes</span><strong>${fcfa(totalCA)}</strong></div></div><div class="mise-en-page" style="margin-top:24px"><nav class="menu-lateral"><button class="actif" data-mtab="apercu">${icone("layout-dashboard")} Apercu</button><button data-mtab="commandes">${icone("package-check")} Commandes ${nouvelles ? `<span class="badge badge-attention">${nouvelles}</span>` : ""}</button>${gestionnaire ? `<button data-mtab="produits">${icone("package")} Produits</button>` : ""}${administrateur ? `<button data-mtab="equipe">${icone("users")} Equipe</button><button data-mtab="boutique">${icone("store")} Établissement</button>${siteDedie ? `<button data-mtab="site-dedie">${icone("palette")} Site dédié</button>` : ""}<button data-mtab="livraison">${icone("truck")} Livraison</button>` : ""}</nav><section id="marchand-zone"></section></div></main><dialog class="dialogue" id="marchand-dialog"><div class="dialogue-entete"><h2 id="dialog-title"></h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="dialog-zone"></div></dialog>`, { mode: "gestion", espace: "Espace marchand", navigation });
+  coquille(`<main class="conteneur"><div class="entete-page"><div><p class="muted petit">${escapeHtml(organisation.role)} · ${siteDedie ? "Site dédié" : "Marketplace"}</p><h1>${escapeHtml(donnees.boutique.nom)}</h1><p class="muted">Établissement ${escapeHtml(donnees.boutique.statut.toLowerCase())}</p></div><div class="entete-page-actions">${organisations.length > 1 ? `<select id="organisation-select" class="btn btn-secondaire">${organisations.map((element) => `<option value="${element.id}" ${element.id === organisation.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>` : ""}<select id="boutique-select" class="btn btn-secondaire" aria-label="Établissement">${donnees.boutiques.map((element) => `<option value="${element.id}" ${element.id === donnees.boutique.id ? "selected" : ""}>${escapeHtml(element.nom)}</option>`).join("")}</select>${peutAjouter ? `<button class="btn btn-secondaire" id="ajouter-établissement">${icone("plus")} Établissement</button>` : ""}<a class="btn btn-secondaire" href="${urlPublique}">${icone("external-link")} Voir le site</a></div></div><div class="kpis"><div class="stat"><span class="muted petit">Commandes</span><strong>${donnees.commandes.length}</strong></div><div class="stat"><span class="muted petit">A traiter</span><strong>${nouvelles}</strong></div><div class="stat"><span class="muted petit">Stock faible</span><strong>${stockFaible}</strong></div><div class="stat"><span class="muted petit">Ventes</span><strong>${fcfa(totalCA)}</strong></div></div><div class="mise-en-page" style="margin-top:24px"><nav class="menu-lateral"><button class="actif" data-mtab="apercu">${icone("layout-dashboard")} Apercu</button><button data-mtab="commandes">${icone("package-check")} Commandes ${nouvelles ? `<span class="badge badge-attention">${nouvelles}</span>` : ""}</button>${gestionnaire ? `<button data-mtab="produits">${icone("package")} Produits</button>` : ""}${administrateur ? `<button data-mtab="equipe">${icone("users")} Equipe</button><button data-mtab="boutique">${icone("store")} Établissement</button>${siteDedie ? `<button data-mtab="site-dedie">${icone("palette")} Site dédié</button>` : ""}<button data-mtab="livraison">${icone("truck")} Livraison</button><button data-mtab="paiements">${icone("wallet-cards")} Paiements</button>` : ""}</nav><section id="marchand-zone"></section></div></main><dialog class="dialogue" id="marchand-dialog"><div class="dialogue-entete"><h2 id="dialog-title"></h2><button class="dialogue-fermer" data-fermer aria-label="Fermer">${icone("x")}</button></div><div class="dialogue-corps" id="dialog-zone"></div></dialog>`, { mode: "gestion", espace: "Espace marchand", navigation });
   document.querySelector("#organisation-select")?.addEventListener("change", (event) => { location.href = `./marchand.html?organisation=${event.target.value}${location.hash}`; });
   document.querySelector("#boutique-select")?.addEventListener("change", (event) => { location.href = `./marchand.html?organisation=${organisation.id}&boutique=${event.target.value}${location.hash}`; });
   document.querySelector("#ajouter-établissement")?.addEventListener("click", () => ouvrirNouvelEtablissement(organisation));
@@ -233,6 +278,7 @@ function afficherTableauMarchand(organisations, organisation, donnees, adminPlat
     boutique: () => afficherBoutique(donnees),
     "site-dedie": () => afficherSiteDedie(donnees),
     livraison: () => afficherLivraison(donnees),
+    paiements: () => afficherPaiements(organisation, donnees),
   };
   const afficherOnglet = (nom, memoriser = false) => {
     const onglet = onglets[nom] && document.querySelector(`[data-mtab="${nom}"]`) ? nom : "apercu";
@@ -273,7 +319,14 @@ function ouvrirNouvelEtablissement(organisation) {
 function afficherApercu(donnees, nouvelles, stockFaible) {
   const zone = document.querySelector("#marchand-zone");
   const recentes = donnees.commandes.slice(0, 5);
-  zone.innerHTML = `<div class="entete-page"><div><h2>Aujourd'hui</h2><p class="muted petit">Les priorites de la boutique</p></div></div><div class="grille-deux"><button class="carte carte-lien" data-raccourci="commandes" style="text-align:left"><span class="badge badge-attention">${nouvelles}</span><h3 style="margin-top:12px">Commandes a traiter</h3><p class="muted petit">Confirmer, preparer puis remettre a la livraison.</p></button><button class="carte carte-lien" data-raccourci="produits" style="text-align:left"><span class="badge ${stockFaible ? "badge-danger" : "badge-succes"}">${stockFaible}</span><h3 style="margin-top:12px">Alertes de stock</h3><p class="muted petit">Articles avec cinq unites ou moins.</p></button></div><section class="section"><h2>Dernieres commandes</h2>${recentes.length ? `<div class="table-wrap"><table><thead><tr><th>Reference</th><th>Date</th><th>Total</th><th>Statut</th></tr></thead><tbody>${recentes.map((commande) => `<tr><td><strong>${escapeHtml(commande.reference)}</strong></td><td>${formatDate(commande.cree_le, true)}</td><td>${fcfa(commande.total)}</td><td>${badgeStatut(commande.statut)}</td></tr>`).join("")}</tbody></table></div>` : vide("package-open", "Aucune commande", "Les nouvelles commandes apparaitront ici en temps reel.")}</section>`;
+  const missions = donnees.commandes
+    .map((commande) => Array.isArray(commande.missions_logistiques) ? commande.missions_logistiques[0] : commande.missions_logistiques)
+    .filter(Boolean);
+  const enCours = missions.filter((mission) => ["ENVOYEE", "ACCEPTEE", "EN_COURS"].includes(mission.statut)).length;
+  const livrees = missions.filter((mission) => mission.statut === "LIVREE").length;
+  const incidents = missions.filter((mission) => ["ERREUR", "RETOUR", "ANNULEE"].includes(mission.statut) || mission.derniere_erreur).length;
+  const tauxLivraison = missions.length ? Math.round((livrees / missions.length) * 100) : 0;
+  zone.innerHTML = `<div class="entete-page"><div><h2>Aujourd'hui</h2><p class="muted petit">Les priorites de la boutique</p></div></div><div class="grille-deux"><button class="carte carte-lien" data-raccourci="commandes" style="text-align:left"><span class="badge badge-attention">${nouvelles}</span><h3 style="margin-top:12px">Commandes a traiter</h3><p class="muted petit">Confirmer, preparer puis remettre a la livraison.</p></button><button class="carte carte-lien" data-raccourci="produits" style="text-align:left"><span class="badge ${stockFaible ? "badge-danger" : "badge-succes"}">${stockFaible}</span><h3 style="margin-top:12px">Alertes de stock</h3><p class="muted petit">Articles avec cinq unites ou moins.</p></button></div><section class="section"><div class="ligne-entre"><div><h2>Performance livraison</h2><p class="muted petit">Donnees logistiques deja recues par Marketplace.</p></div>${incidents ? `<span class="badge badge-danger">${incidents} a verifier</span>` : '<span class="badge badge-succes">Flux sain</span>'}</div><div class="grille-quatre suivi-kpis"><div class="carte"><span class="muted petit">En cours</span><strong>${enCours}</strong></div><div class="carte"><span class="muted petit">Livrees</span><strong>${livrees}</strong></div><div class="carte"><span class="muted petit">Taux de livraison</span><strong>${tauxLivraison}%</strong></div><div class="carte"><span class="muted petit">Retours / erreurs</span><strong>${incidents}</strong></div></div></section><section class="section"><h2>Dernieres commandes</h2>${recentes.length ? `<div class="table-wrap"><table><thead><tr><th>Reference</th><th>Date</th><th>Total</th><th>Statut</th></tr></thead><tbody>${recentes.map((commande) => `<tr><td><strong>${escapeHtml(commande.reference)}</strong></td><td>${formatDate(commande.cree_le, true)}</td><td>${fcfa(commande.total)}${commande.frais_livraison_a_confirmer && commande.statut !== "ANNULEE" ? " + livraison" : ""}</td><td>${badgeStatut(commande.statut)}</td></tr>`).join("")}</tbody></table></div>` : vide("package-open", "Aucune commande", "Les nouvelles commandes apparaitront ici en temps reel.")}</section>`;
   zone.querySelectorAll("[data-raccourci]").forEach((button) => button.addEventListener("click", () => document.querySelector(`[data-mtab="${button.dataset.raccourci}"]`)?.click()));
   rafraichirIcones(zone);
 }
@@ -288,7 +341,8 @@ function afficherCommandes(donnees) {
       const action = prochaineAction(commande.statut);
       const adresse = commande.achats?.adresses_livraison || {};
       const mission = Array.isArray(commande.missions_logistiques) ? commande.missions_logistiques[0] : commande.missions_logistiques;
-      return `<article class="carte"><div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)} · ${escapeHtml(adresse.destinataire_nom || "Client")}</p><h3 style="margin:4px 0">${escapeHtml(commande.reference)}</h3><p class="muted petit" style="margin:0">${escapeHtml(adresse.commune || adresse.adresse || "")}${mission?.derniere_erreur ? ` · IKMS : ${escapeHtml(mission.derniere_erreur)}` : ""}</p></div><div style="text-align:right">${badgeStatut(commande.statut)}<strong style="display:block;margin-top:8px">${fcfa(commande.total)}</strong></div></div><div class="ligne-entre" style="margin-top:14px;align-items:flex-end"><div class="pile" style="gap:5px">${(commande.lignes_commande_marketplace || []).slice(0, 3).map((ligne) => `<span class="petit">${escapeHtml(ligne.nom_produit)} · ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</span>`).join("")}${(commande.lignes_commande_marketplace || []).length > 3 ? `<span class="muted petit">+${commande.lignes_commande_marketplace.length - 3} article(s)</span>` : ""}</div><div class="ligne" style="justify-content:flex-end">${action ? `<button class="btn btn-primaire" data-action-commande="${commande.id}">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" data-annuler-commande="${commande.id}">${icone("x-circle")} Annuler</button>` : ""}<button class="btn btn-secondaire" data-commande="${commande.id}">${icone("eye")} Details</button></div></div></article>`;
+      const fraisAConfirmer = commande.frais_livraison_a_confirmer && commande.statut !== "ANNULEE";
+      return `<article class="carte"><div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)} · ${escapeHtml(adresse.destinataire_nom || "Client")}</p><h3 style="margin:4px 0">${escapeHtml(commande.reference)}</h3><p class="muted petit" style="margin:0">${escapeHtml(adresse.commune || adresse.adresse || "")}${mission?.derniere_erreur ? ` · IKMS : ${escapeHtml(mission.derniere_erreur)}` : ""}</p></div><div style="text-align:right">${badgeStatut(commande.statut)}<strong style="display:block;margin-top:8px">${fcfa(commande.total)}${fraisAConfirmer ? " + livraison" : ""}</strong>${fraisAConfirmer ? '<span class="muted petit">tarif a confirmer</span>' : ""}</div></div><div class="ligne-entre" style="margin-top:14px;align-items:flex-end"><div class="pile" style="gap:5px">${(commande.lignes_commande_marketplace || []).slice(0, 3).map((ligne) => `<span class="petit">${escapeHtml(ligne.nom_produit)} · ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</span>`).join("")}${(commande.lignes_commande_marketplace || []).length > 3 ? `<span class="muted petit">+${commande.lignes_commande_marketplace.length - 3} article(s)</span>` : ""}</div><div class="ligne" style="justify-content:flex-end">${action ? `<button class="btn btn-primaire" data-action-commande="${commande.id}">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" data-annuler-commande="${commande.id}">${icone("x-circle")} Annuler</button>` : ""}<button class="btn btn-secondaire" data-commande="${commande.id}">${icone("eye")} Details</button></div></div></article>`;
     }).join("")}</div>` : vide("package-open", "Aucune commande dans cette vue");
     document.querySelectorAll("[data-commande]").forEach((button) => button.addEventListener("click", () => ouvrirCommande(donnees, button.dataset.commande)));
     document.querySelectorAll("[data-action-commande]").forEach((button) => button.addEventListener("click", () => {
@@ -311,8 +365,9 @@ function ouvrirCommande(donnees, commandeId) {
   const adresse = commande.achats?.adresses_livraison || {};
   const mission = Array.isArray(commande.missions_logistiques) ? commande.missions_logistiques[0] : commande.missions_logistiques;
   const action = prochaineAction(commande.statut);
+  const fraisAConfirmer = commande.frais_livraison_a_confirmer && commande.statut !== "ANNULEE";
   document.querySelector("#dialog-title").textContent = commande.reference;
-  document.querySelector("#dialog-zone").innerHTML = `<div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)}</p>${badgeStatut(commande.statut)}</div><strong>${fcfa(commande.total)}</strong></div><hr class="separateur"><div><h3>Articles</h3><div class="pile">${(commande.lignes_commande_marketplace || []).map((ligne) => `<div class="ligne"><img src="${escapeHtml(ligne.image_url || etat.configuration.hero_image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:6px"><div style="flex:1"><strong>${escapeHtml(ligne.nom_produit)}</strong><p class="muted petit" style="margin:4px 0">${escapeHtml(ligne.nom_variante)} - ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</p></div></div>`).join("")}</div></div><hr class="separateur"><div><h3>Livraison</h3><p class="muted petit">${escapeHtml(adresse.destinataire_nom || "Client")} - ${escapeHtml(adresse.telephone || "")}<br>${escapeHtml(adresse.adresse || "")} ${escapeHtml(adresse.commune || "")}<br>Zone IKMS : ${escapeHtml(adresse.code_zone || "Non renseignee")}<br>${escapeHtml(adresse.indications || "")}</p></div>${mission ? `<div class="bande-info"><div class="ligne-entre"><strong>IKIGAI Livraison</strong>${badgeStatut(mission.statut)}</div><p class="petit" style="margin:6px 0 0">Commande IKMS : ${escapeHtml(mission.commande_livraison_externe_id || "En attente")}<br>Statut IKMS : ${escapeHtml(mission.statut_ikms || "-")}${mission.code_ramassage ? `<br>Code ramassage : <strong>${escapeHtml(mission.code_ramassage)}</strong>` : ""}${mission.code_livraison ? `<br>Code livraison client : <strong>${escapeHtml(mission.code_livraison)}</strong>` : ""}</p></div>` : ""}${commande.note_client ? `<div class="bande-info"><strong>Note client</strong><p class="petit" style="margin:5px 0 0">${escapeHtml(commande.note_client)}</p></div>` : ""}<div class="ligne" style="margin-top:18px">${action ? `<button class="btn btn-primaire" id="action-commande">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" id="annuler-commande">${icone("x-circle")} Annuler</button>` : ""}</div>`;
+  document.querySelector("#dialog-zone").innerHTML = `<div class="ligne-entre"><div><p class="muted petit">${formatDate(commande.cree_le, true)}</p>${badgeStatut(commande.statut)}</div><div style="text-align:right"><strong>${fcfa(commande.total)}${fraisAConfirmer ? " + livraison" : ""}</strong>${fraisAConfirmer ? '<p class="muted petit" style="margin:3px 0 0">Tarif definitif a confirmer</p>' : ""}</div></div><hr class="separateur"><div><h3>Articles</h3><div class="pile">${(commande.lignes_commande_marketplace || []).map((ligne) => `<div class="ligne"><img src="${escapeHtml(ligne.image_url || etat.configuration.hero_image_url)}" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:6px"><div style="flex:1"><strong>${escapeHtml(ligne.nom_produit)}</strong><p class="muted petit" style="margin:4px 0">${escapeHtml(ligne.nom_variante)} - ${ligne.quantite} x ${fcfa(ligne.prix_unitaire)}</p></div></div>`).join("")}</div></div><hr class="separateur"><div><h3>Livraison</h3><p class="muted petit">${escapeHtml(adresse.destinataire_nom || "Client")} - ${escapeHtml(adresse.telephone || "")}<br>${escapeHtml(adresse.adresse || "")} ${escapeHtml(adresse.commune || "")}<br>Zone : ${escapeHtml(adresse.code_zone || "Non renseignee")}<br>${escapeHtml(adresse.indications || "")}</p></div><div class="suivi-commande-marchand"><div><strong>Suivi Marketplace</strong>${mission?.commande_livraison_externe_id ? `<p class="muted petit">Reference transporteur : ${escapeHtml(mission.commande_livraison_externe_id)}</p>` : ""}</div>${rendreParcoursLivraison(commande.statut)}${rendreCodesMission(mission, { marchand: true })}${rendreComparaisonFrais(commande, mission)}</div>${mission?.derniere_erreur ? `<div class="bande-info bande-danger"><strong>Incident de livraison</strong><p class="petit">${escapeHtml(mission.derniere_erreur)}</p></div>` : ""}${commande.note_client ? `<div class="bande-info"><strong>Note client</strong><p class="petit" style="margin:5px 0 0">${escapeHtml(commande.note_client)}</p></div>` : ""}<div class="ligne" style="margin-top:18px">${action ? `<button class="btn btn-primaire" id="action-commande">${icone(action.icone)} ${action.libelle}</button>` : ""}${["NOUVELLE", "CONFIRMEE", "EN_PREPARATION", "PRETE"].includes(commande.statut) ? `<button class="btn btn-danger" id="annuler-commande">${icone("x-circle")} Annuler</button>` : ""}</div>`;
   document.querySelector("#action-commande")?.addEventListener("click", async (event) => {
     executerActionCommande(donnees, commande, action, event.currentTarget);
   });
@@ -420,7 +475,7 @@ function afficherEquipe(organisation, donnees) {
 function afficherBoutique(donnees) {
   const zone = document.querySelector("#marchand-zone");
   const boutique = donnees.boutique;
-  zone.innerHTML = `<form class="carte" id="boutique-form"><h2>Personnaliser la boutique</h2><div class="champ"><label>Nom</label><input name="nom" minlength="2" maxlength="120" value="${escapeHtml(boutique.nom)}" required></div><div class="champ"><label>Description</label><textarea name="description" maxlength="2000">${escapeHtml(boutique.description)}</textarea></div><div class="grille-deux"><div class="champ"><label>Telephone</label><input name="telephone" type="tel" maxlength="30" value="${escapeHtml(boutique.telephone)}"></div><div class="champ"><label>WhatsApp</label><input name="whatsapp" type="tel" maxlength="30" value="${escapeHtml(boutique.whatsapp)}"></div></div><div class="champ"><label>Email de contact</label><input name="email_contact" type="email" maxlength="254" value="${escapeHtml(boutique.email_contact)}"></div><div class="champ"><label>Adresse</label><input name="adresse" maxlength="500" value="${escapeHtml(boutique.adresse)}"></div><div class="grille-deux"><div class="champ"><label>Frais de livraison de base</label><input name="frais_livraison_base" type="number" min="0" max="5000000" value="${boutique.frais_livraison_base}"></div><div class="champ"><label>Delai de preparation (minutes)</label><input name="delai_preparation_minutes" type="number" min="0" max="10080" value="${boutique.delai_preparation_minutes || 60}"></div></div><div class="champ"><label>Publication</label><select name="statut"><option value="BROUILLON" ${boutique.statut === "BROUILLON" ? "selected" : ""}>Brouillon</option><option value="PUBLIEE" ${boutique.statut === "PUBLIEE" ? "selected" : ""}>Publiee</option></select></div><div class="grille-deux"><div class="champ"><label>Logo</label><input name="logo" type="file" accept="image/jpeg,image/png,image/webp">${boutique.logo_url ? `<img src="${escapeHtml(boutique.logo_url)}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:6px">` : ""}</div><div class="champ"><label>Banniere</label><input name="banniere" type="file" accept="image/jpeg,image/png,image/webp">${boutique.banniere_url ? `<img src="${escapeHtml(boutique.banniere_url)}" alt="" style="width:160px;height:90px;object-fit:cover;border-radius:6px">` : ""}</div></div><button class="btn btn-primaire" id="sauver-boutique">${icone("save")} Enregistrer</button></form>`;
+  zone.innerHTML = `<form class="carte" id="boutique-form"><h2>Personnaliser la boutique</h2><div class="champ"><label>Nom</label><input name="nom" minlength="2" maxlength="120" value="${escapeHtml(boutique.nom)}" required></div><div class="champ"><label>Description</label><textarea name="description" maxlength="2000">${escapeHtml(boutique.description)}</textarea></div><div class="grille-deux"><div class="champ"><label>Telephone</label><input name="telephone" type="tel" maxlength="30" value="${escapeHtml(boutique.telephone)}"></div><div class="champ"><label>WhatsApp</label><input name="whatsapp" type="tel" maxlength="30" value="${escapeHtml(boutique.whatsapp)}"></div></div><div class="champ"><label>Email de contact</label><input name="email_contact" type="email" maxlength="254" value="${escapeHtml(boutique.email_contact)}"></div><div class="champ"><label>Adresse</label><input name="adresse" maxlength="500" value="${escapeHtml(boutique.adresse)}"></div><div class="champ"><label>Delai de preparation (minutes)</label><input name="delai_preparation_minutes" type="number" min="0" max="10080" value="${boutique.delai_preparation_minutes || 60}"></div><div class="bande-info"><strong>Tarif de livraison automatique</strong><p class="petit" style="margin:5px 0 0">Le prix est calcule par IKMS entre votre zone de ramassage et celle du client.</p></div><div class="champ"><label>Publication</label><select name="statut"><option value="BROUILLON" ${boutique.statut === "BROUILLON" ? "selected" : ""}>Brouillon</option><option value="PUBLIEE" ${boutique.statut === "PUBLIEE" ? "selected" : ""}>Publiee</option></select></div><div class="grille-deux"><div class="champ"><label>Logo</label><input name="logo" type="file" accept="image/jpeg,image/png,image/webp">${boutique.logo_url ? `<img src="${escapeHtml(boutique.logo_url)}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:6px">` : ""}</div><div class="champ"><label>Banniere</label><input name="banniere" type="file" accept="image/jpeg,image/png,image/webp">${boutique.banniere_url ? `<img src="${escapeHtml(boutique.banniere_url)}" alt="" style="width:160px;height:90px;object-fit:cover;border-radius:6px">` : ""}</div></div><button class="btn btn-primaire" id="sauver-boutique">${icone("save")} Enregistrer</button></form>`;
   zone.querySelector("#boutique-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = document.querySelector("#sauver-boutique");
@@ -437,7 +492,6 @@ function afficherBoutique(donnees) {
         whatsapp: valeurs.whatsapp || null,
         email_contact: valeurs.email_contact || null,
         adresse: valeurs.adresse || null,
-        frais_livraison_base: Number(valeurs.frais_livraison_base || 0),
         delai_preparation_minutes: Number(valeurs.delai_preparation_minutes || 0),
         statut: valeurs.statut,
         logo_url: logo,
@@ -538,21 +592,45 @@ function afficherSiteDedie(donnees) {
   rafraichirIcones(zone);
 }
 
-function afficherLivraison(donnees) {
+function afficherPaiements(organisation, donnees) {
+  const zone = document.querySelector("#marchand-zone");
+  const wave = donnees.wave || {};
+  zone.innerHTML = `<div class="entete-page"><div><h2>Paiements du tenant</h2><p class="muted petit">Une configuration Wave propre a ${escapeHtml(organisation.nom)}, partagee par ses etablissements.</p></div>${badgeStatut(wave.actif ? "ACTIF" : "SUSPENDUE")}</div><div class="bande-info bande-attention"><strong>Activation progressive</strong><p class="petit" style="margin:5px 0 0">Les secrets peuvent etre prepares maintenant. Wave restera masque au checkout jusqu'a l'activation du parcours de paiement multi-tenant.</p></div><form class="carte" id="wave-form" style="margin-top:15px"><div class="champ"><label>Cle API Wave Business</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${wave.api_key_configuree ? `Configuree (termine par ${escapeHtml(wave.api_key_suffixe || "****")})` : "wave_..."}"><span class="champ-aide">La cle est chiffree dans Supabase Vault et n'est jamais envoyee au navigateur.</span></div><div class="champ"><label>Secret de signature Wave</label><input name="signing_secret" type="password" autocomplete="new-password" placeholder="${wave.signing_secret_configure ? "Configure — laisser vide pour conserver" : "wave_..."}"></div><label class="case"><input name="actif" type="checkbox" ${wave.actif ? "checked" : ""}> Marquer la configuration comme prete</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer Wave pour ce tenant</button></form>`;
+  zone.querySelector("#wave-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const valeurs = Object.fromEntries(new FormData(form));
+    const { error } = await supabase.rpc("rpc_configurer_wave_organisation", {
+      p_organisation_id: organisation.id,
+      p_api_key: valeurs.api_key || null,
+      p_signing_secret: valeurs.signing_secret || null,
+      p_actif: new FormData(form).has("actif"),
+    });
+    if (error) return gererErreur(error);
+    toast("Configuration Wave du tenant enregistree");
+    location.reload();
+  });
+  rafraichirIcones(zone);
+}
+
+async function afficherLivraison(donnees) {
   const zone = document.querySelector("#marchand-zone");
   const integration = donnees.integration || {};
   const modePaiement = integration.mode_paiement || "A_LA_LIVRAISON";
   const configuration = etat.configuration;
+  const catalogueZones = await chargerZonesIkms(configuration);
+  const optionsZones = catalogueZones.zones
+    .map((element) => `<option value="${escapeHtml(element.code)}" ${element.code === integration.zone_depart ? "selected" : ""}>${escapeHtml(element.nom || element.code)}</option>`)
+    .join("");
   const portail = configuration.ikms_portail_pro_url
     ? `<a class="btn btn-secondaire" href="${escapeHtml(configuration.ikms_portail_pro_url)}" target="_blank" rel="noopener">${icone("external-link")} Creer mon compte pro</a>`
     : "";
-  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configure")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Cle API : ${integration.cle_api_configuree ? "configuree dans le coffre securise" : "a renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label><input name="zone_depart" value="${escapeHtml(integration.zone_depart)}" placeholder="COCODY" required></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="A_LA_LIVRAISON" ${modePaiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${modePaiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option><option value="SANS_PAIEMENT" ${modePaiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option></select><span class="champ-aide">Facture compte pro fonctionne seulement si IKMS a active la facturation differee pour cette cle.</span></div></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Cle API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission a IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la connexion</button></form>`;
+  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configure")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Cle API : ${integration.cle_api_configuree ? "configuree dans le coffre securise" : "a renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label>${optionsZones ? `<select name="zone_depart" required><option value="">Choisir une zone</option>${optionsZones}</select>` : `<input name="zone_depart" value="${escapeHtml(integration.zone_depart)}" placeholder="COCODY" required>`}<span class="champ-aide">Liste synchronisee avec la grille IKMS.</span></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="A_LA_LIVRAISON" ${modePaiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${modePaiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option><option value="SANS_PAIEMENT" ${modePaiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option></select><span class="champ-aide">Facture compte pro fonctionne seulement si IKMS a active la facturation differee pour cette cle.</span></div></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Cle API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission a IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la connexion</button></form>`;
   zone.querySelector("#livraison-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const valeurs = Object.fromEntries(new FormData(form));
-    let telephone = String(valeurs.expediteur_tel || "").replace(/\D/g, "");
-    if (telephone.length === 13 && telephone.startsWith("225")) telephone = telephone.slice(3);
+    const telephone = normaliserTelephoneRamassage(valeurs.expediteur_tel);
     const { error } = await supabase.rpc("rpc_configurer_integration_ikms_boutique", {
       p_boutique_id: donnees.boutique.id,
       p_zone_depart: String(valeurs.zone_depart || "").toUpperCase(),

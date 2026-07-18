@@ -2,6 +2,7 @@ import {
   appliquerTheme,
   boutonOccupe,
   chargerConfiguration,
+  chargerZonesIkms,
   configurationManquante,
   escapeHtml,
   icone,
@@ -14,7 +15,7 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js?v=11";
+} from "../assets/api.js?v=15";
 
 const app = document.querySelector("#identity-app");
 const etat = {
@@ -58,19 +59,23 @@ async function accepterInvitation() {
   await chargerDonnees();
 }
 
-function rendreAuth(modeInitial = "connexion") {
+async function rendreAuth(modeInitial = "connexion") {
+  const catalogueZones = await chargerZonesIkms(etat.configuration);
+  const optionsZones = catalogueZones.zones
+    .map((zone) => `<option value="${escapeHtml(zone.code)}">${escapeHtml(zone.nom || zone.code)}</option>`)
+    .join("");
   app.innerHTML = `<div class="auth-shell"><section class="auth-visuel"><a class="marque" href="../marketplace/index.html"><span style="color:white">IKIGAI</span> <span>Identity</span></a><div><h1>Un compte pour tout l'ecosysteme IKIGAI.</h1><p>Marketplace, livraison et services professionnels partagent votre identite, sans melanger les donnees metier.</p></div><p class="auth-bas petit">IKIGAI Software</p></section><section class="auth-panneau"><div class="auth-form">${new URLSearchParams(location.search).has("invitation") ? '<div class="bande-info" style="margin-bottom:17px"><strong>Invitation recue</strong><p class="petit" style="margin:5px 0 0">Connecte-toi ou cree ton compte avec l\'email invite pour rejoindre l\'organisation.</p></div>' : ""}<div class="onglets"><button class="onglet" data-auth="connexion">Connexion</button><button class="onglet" data-auth="inscription">Creer un compte</button></div><div id="auth-zone" style="padding-top:21px"></div></div></section></div>`;
   const afficher = (mode) => {
     const inscription = mode === "inscription";
     document.querySelectorAll("[data-auth]").forEach((button) => button.classList.toggle("actif", button.dataset.auth === mode));
-    document.querySelector("#auth-zone").innerHTML = `<form id="auth-form">${inscription ? '<div class="grille-deux"><div class="champ"><label>Prenom</label><input name="prenom" required></div><div class="champ"><label>Nom</label><input name="nom" required></div></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel"></div>' : ""}<div class="champ"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="champ"><label>Mot de passe</label><input name="password" type="password" minlength="8" autocomplete="${inscription ? "new-password" : "current-password"}" required></div><button class="btn btn-primaire btn-bloc" id="auth-submit">${icone(inscription ? "user-plus" : "log-in")} ${inscription ? "Creer mon compte" : "Se connecter"}</button></form>${!inscription ? '<button class="btn btn-texte" id="oublie" style="margin-top:10px">Mot de passe oublie</button>' : ""}`;
+    document.querySelector("#auth-zone").innerHTML = `<form id="auth-form">${inscription ? `<div class="grille-deux"><div class="champ"><label>Prenom</label><input name="prenom" required></div><div class="champ"><label>Nom</label><input name="nom" required></div></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel"></div><div class="champ"><label>Zone de livraison habituelle</label>${optionsZones ? `<select name="zone_livraison" required><option value="">Choisir une zone</option>${optionsZones}</select>` : '<input name="zone_livraison" placeholder="COCODY" required>'}<span class="champ-aide">Cette zone sera modifiable pour chaque commande.</span></div>` : ""}<div class="champ"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="champ"><label>Mot de passe</label><input name="password" type="password" minlength="8" autocomplete="${inscription ? "new-password" : "current-password"}" required></div><button class="btn btn-primaire btn-bloc" id="auth-submit">${icone(inscription ? "user-plus" : "log-in")} ${inscription ? "Creer mon compte" : "Se connecter"}</button></form>${!inscription ? '<button class="btn btn-texte" id="oublie" style="margin-top:10px">Mot de passe oublie</button>' : ""}`;
     document.querySelector("#auth-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const valeurs = Object.fromEntries(new FormData(event.currentTarget));
       const button = document.querySelector("#auth-submit");
       boutonOccupe(button, true, inscription ? "Creation..." : "Connexion...");
       const resultat = inscription
-        ? await supabase.auth.signUp({ email: valeurs.email.trim(), password: valeurs.password, options: { emailRedirectTo: urlConfirmationCourante(), data: { prenom: valeurs.prenom.trim(), nom: valeurs.nom.trim(), telephone: valeurs.telephone?.trim() || null } } })
+        ? await supabase.auth.signUp({ email: valeurs.email.trim(), password: valeurs.password, options: { emailRedirectTo: urlConfirmationCourante(), data: { prenom: valeurs.prenom.trim(), nom: valeurs.nom.trim(), telephone: valeurs.telephone?.trim() || null, zone_livraison: valeurs.zone_livraison?.trim().toUpperCase() || null } } })
         : await supabase.auth.signInWithPassword({ email: valeurs.email.trim(), password: valeurs.password });
       boutonOccupe(button, false);
       if (resultat.error) return erreur(resultat.error);
@@ -117,12 +122,15 @@ function rendreOnglet() {
   affichages[etat.onglet]?.();
 }
 
-function afficherProfil() {
+async function afficherProfil() {
   const zone = document.querySelector("#identity-zone");
-  zone.innerHTML = `<div class="entete-page"><div><h1>Mon profil</h1><p class="muted">${escapeHtml(etat.session.user.email)}</p></div></div><form class="carte" id="profil-form"><div class="grille-deux"><div class="champ"><label>Prenom</label><input name="prenom" value="${escapeHtml(etat.identite.prenom)}"></div><div class="champ"><label>Nom</label><input name="nom" value="${escapeHtml(etat.identite.nom)}"></div></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" value="${escapeHtml(etat.identite.telephone)}"></div><div class="champ"><label>Langue</label><select name="langue"><option value="fr" ${etat.identite.langue === "fr" ? "selected" : ""}>Francais</option><option value="en" ${etat.identite.langue === "en" ? "selected" : ""}>English</option></select></div><button class="btn btn-primaire">${icone("save")} Enregistrer</button></form>`;
+  const catalogueZones = await chargerZonesIkms(etat.configuration);
+  const optionsZones = catalogueZones.zones.map((element) => `<option value="${escapeHtml(element.code)}" ${element.code === etat.identite.zone_livraison ? "selected" : ""}>${escapeHtml(element.nom || element.code)}</option>`).join("");
+  zone.innerHTML = `<div class="entete-page"><div><h1>Mon profil</h1><p class="muted">${escapeHtml(etat.session.user.email)}</p></div></div><form class="carte" id="profil-form"><div class="grille-deux"><div class="champ"><label>Prenom</label><input name="prenom" value="${escapeHtml(etat.identite.prenom)}"></div><div class="champ"><label>Nom</label><input name="nom" value="${escapeHtml(etat.identite.nom)}"></div></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" value="${escapeHtml(etat.identite.telephone)}"></div><div class="champ"><label>Zone de livraison habituelle</label>${optionsZones ? `<select name="zone_livraison"><option value="">Non renseignee</option>${optionsZones}</select>` : `<input name="zone_livraison" value="${escapeHtml(etat.identite.zone_livraison)}" placeholder="COCODY">`}</div><div class="champ"><label>Langue</label><select name="langue"><option value="fr" ${etat.identite.langue === "fr" ? "selected" : ""}>Francais</option><option value="en" ${etat.identite.langue === "en" ? "selected" : ""}>English</option></select></div><button class="btn btn-primaire">${icone("save")} Enregistrer</button></form>`;
   zone.querySelector("#profil-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const valeurs = Object.fromEntries(new FormData(event.currentTarget));
+    valeurs.zone_livraison = String(valeurs.zone_livraison || "").trim().toUpperCase() || null;
     const { error: profilErreur } = await supabase.from("identites").update(valeurs).eq("id", etat.session.user.id);
     if (profilErreur) return erreur(profilErreur);
     Object.assign(etat.identite, valeurs);
