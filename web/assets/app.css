@@ -438,6 +438,36 @@ tr:last-child td { border-bottom: 0; }
 .toast.visible { transform: translate(-50%, 0); opacity: 1; }
 .toast-erreur { background: var(--danger); }
 
+.grille-quatre { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.suivi-kpis { margin-top: 14px; }
+.suivi-kpis .carte { background: var(--fond); }
+.suivi-kpis strong { display: block; margin-top: 5px; font-size: 22px; }
+
+.suivi-commande-client, .suivi-commande-marchand { margin-top: 17px; padding-top: 16px; border-top: 1px solid var(--ligne); }
+.parcours-livraison { margin: 18px 0 0; padding: 0; list-style: none; }
+.parcours-livraison li { position: relative; min-height: 64px; padding: 0 0 15px 43px; display: grid; align-content: start; }
+.parcours-livraison li:not(:last-child)::before { content: ""; position: absolute; left: 15px; top: 29px; bottom: -1px; width: 2px; background: var(--ligne); }
+.parcours-livraison li.terminee:not(:last-child)::before { background: var(--vert); }
+.parcours-marqueur { position: absolute; left: 0; top: 0; width: 31px; height: 31px; border: 2px solid var(--ligne); border-radius: 50%; display: grid; place-items: center; background: white; color: var(--texte-doux); font-size: 11px; font-weight: 900; }
+.parcours-marqueur svg { width: 16px; height: 16px; }
+.parcours-livraison li.active .parcours-marqueur { border-color: var(--primaire); background: var(--primaire); color: white; box-shadow: 0 0 0 5px color-mix(in srgb, var(--primaire) 13%, transparent); }
+.parcours-livraison li.terminee .parcours-marqueur { border-color: var(--vert); background: var(--vert); color: white; }
+.parcours-livraison li.en-attente { color: var(--texte-doux); }
+.parcours-livraison li strong { display: block; padding-top: 2px; font-size: 13px; }
+.parcours-livraison li p { margin: 4px 0 0; color: var(--texte-doux); font-size: 11px; line-height: 1.45; }
+.suivi-alerte { margin-top: 14px; }
+.suivi-alerte p { margin: 5px 0 0; }
+
+.codes-logistiques { margin: 13px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.code-logistique { padding: 14px; border: 1px solid #efd7a3; border-radius: var(--rayon); background: #fff9e9; }
+.code-logistique-livraison { border-color: #b9ddce; background: #eef8f3; }
+.code-logistique > span { display: flex; align-items: center; gap: 7px; color: var(--texte-doux); font-size: 11px; font-weight: 800; }
+.code-logistique > span svg { width: 15px; height: 15px; }
+.code-logistique > strong { display: block; margin: 9px 0 6px; font-size: 25px; letter-spacing: .12em; }
+.code-logistique small { display: block; color: var(--texte-doux); font-size: 10px; line-height: 1.45; }
+.rapprochement-livraison { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; background: var(--fond); }
+.rapprochement-livraison strong { display: block; margin-top: 4px; font-size: 14px; }
+.rapprochement-livraison .ecart-negatif strong { color: var(--danger); }
 @media (min-width: 820px) {
   .bottom-nav { display: none; }
   .app { padding-bottom: 0; }
@@ -493,6 +523,7 @@ tr:last-child td { border-bottom: 0; }
   .menu-lateral { display: flex; overflow-x: auto; gap: 3px; padding: 0 0 8px; margin-bottom: 18px; border: 0; border-bottom: 1px solid var(--ligne); scrollbar-width: none; }
   .menu-lateral button, .menu-lateral a { width: auto; flex: 0 0 auto; white-space: nowrap; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grille-quatre { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .galerie-bandeau-admin { grid-template-columns: 1fr; }
   .auth-shell { display: block; }
   .auth-visuel { min-height: 190px; padding: 24px; }
@@ -528,4 +559,5 @@ tr:last-child td { border-bottom: 0; }
   .panier-ligne .actions-ligne { grid-column: 2; }
   .kpis { gap: 8px; }
   .stat strong { font-size: 19px; }
+  .codes-logistiques, .rapprochement-livraison { grid-template-columns: 1fr; }
 }

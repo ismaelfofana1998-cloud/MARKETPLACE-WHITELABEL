@@ -15,7 +15,7 @@ import {
   supprimerImageStockage,
   televerserImage,
   toast,
-} from "../assets/api.js?v=11";
+} from "../assets/api.js?v=15";
 import {
   app,
   badgeStatut,
@@ -24,7 +24,7 @@ import {
   etat,
   gererErreur,
   vide,
-} from "./shared.js?v=11";
+} from "./shared.js?v=15";
 
 async function verifierAdmin() {
   const { data, error } = await supabase
@@ -370,7 +370,7 @@ function afficherLivraisons(admin, donnees) {
   const configuration = donnees.configuration;
   const incidents = donnees.missions.filter((mission) => ["ERREUR", "A_ENVOYER"].includes(mission.statut));
   const lectureSeule = admin.role !== "SUPER_ADMIN" ? "disabled" : "";
-  zone.innerHTML = `<div class="entete-page"><div><h2>Logistique et notifications</h2><p class="muted petit">Tenant IKMS, zones, emails et missions</p></div>${incidents.length ? `<span class="badge badge-danger">${incidents.length} a verifier</span>` : '<span class="badge badge-succes">Tout est normal</span>'}</div><div class="grille-deux"><form class="carte" id="ikms-plateforme-form"><h3>Tenant IKMS</h3><div class="grille-deux"><div class="champ"><label>Nom</label><input name="ikms_tenant_nom" value="${escapeHtml(configuration.ikms_tenant_nom)}" required ${lectureSeule}></div><div class="champ"><label>Code</label><input name="ikms_tenant_code" value="${escapeHtml(configuration.ikms_tenant_code)}" required ${lectureSeule}></div></div><div class="champ"><label>URL de base API</label><input name="ikms_api_base_url" type="url" value="${escapeHtml(configuration.ikms_api_base_url)}" placeholder="https://projet.supabase.co/functions/v1/api-v1" ${lectureSeule}></div><div class="champ"><label>Page de creation du compte pro</label><input name="ikms_portail_pro_url" type="url" value="${escapeHtml(configuration.ikms_portail_pro_url)}" placeholder="https://..." ${lectureSeule}></div><div class="champ"><label>Zones disponibles</label><textarea name="zones_livraison" rows="7" placeholder="COCODY|Cocody&#10;YOPOUGON|Yopougon" ${lectureSeule}>${escapeHtml(zonesVersTexte(configuration.zones_livraison))}</textarea></div><button class="btn btn-primaire" id="sauver-ikms" ${lectureSeule}>${icone("save")} Enregistrer IKMS</button></form><form class="carte" id="email-transactionnel-form"><div class="ligne-entre"><h3>Emails de statut</h3>${badgeStatut(configuration.emails_transactionnels_actifs ? "ACTIF" : "SUSPENDUE")}</div><div class="champ"><label>Nom expediteur</label><input name="nom_expediteur" value="${escapeHtml(configuration.nom_expediteur_email)}" required ${lectureSeule}></div><div class="champ"><label>Email expediteur verifie</label><input name="email_expediteur" type="email" value="${escapeHtml(configuration.email_expediteur)}" required ${lectureSeule}></div><div class="champ"><label>URL publique</label><input name="site_public_url" type="url" value="${escapeHtml(configuration.site_public_url)}" required ${lectureSeule}></div><div class="champ"><label>Cle API Resend</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${configuration.email_api_configuree ? "Laisser vide pour conserver la cle" : "re_..."}" ${lectureSeule}></div><label class="case"><input name="actif" type="checkbox" ${configuration.emails_transactionnels_actifs ? "checked" : ""} ${lectureSeule}> Envoyer un email a chaque statut</label><button class="btn btn-primaire" id="sauver-emails" style="margin-top:16px" ${lectureSeule}>${icone("mail-check")} Enregistrer les emails</button></form></div><section class="section"><div class="ligne-entre"><div><h3>Missions IKMS</h3><p class="muted petit">Synchronisation automatique toutes les deux minutes</p></div></div>${donnees.missions.length ? `<div class="table-wrap"><table><thead><tr><th>Commande</th><th>Boutique</th><th>IKMS</th><th>Synchronisee</th><th>Tentatives</th><th>Statut</th><th>Erreur</th></tr></thead><tbody>${donnees.missions.map((mission) => `<tr><td><strong>${escapeHtml(mission.commandes_marketplace?.reference || mission.commande_id)}</strong></td><td>${escapeHtml(mission.commandes_marketplace?.boutiques?.nom || "")}</td><td><span class="petit">${escapeHtml(mission.commande_livraison_externe_id || "-")}<br>${escapeHtml(mission.statut_ikms || "-")}</span></td><td>${mission.derniere_synchronisation ? formatDate(mission.derniere_synchronisation, true) : "-"}</td><td>${mission.tentatives}</td><td>${badgeStatut(mission.statut)}</td><td class="muted petit">${escapeHtml(mission.derniere_erreur || "")}</td></tr>`).join("")}</tbody></table></div>` : vide("truck", "Aucune mission logistique", "Les missions apparaitront apres la transmission d'une commande prete.")}</section>`;
+  zone.innerHTML = `<div class="entete-page"><div><h2>Logistique et notifications</h2><p class="muted petit">Tenant IKMS, zones, emails et missions</p></div>${incidents.length ? `<span class="badge badge-danger">${incidents.length} a verifier</span>` : '<span class="badge badge-succes">Tout est normal</span>'}</div><div class="grille-deux"><form class="carte" id="ikms-plateforme-form"><h3>Tenant IKMS</h3><div class="grille-deux"><div class="champ"><label>Nom</label><input name="ikms_tenant_nom" value="${escapeHtml(configuration.ikms_tenant_nom)}" required ${lectureSeule}></div><div class="champ"><label>Code</label><input name="ikms_tenant_code" value="${escapeHtml(configuration.ikms_tenant_code)}" required ${lectureSeule}></div></div><div class="champ"><label>URL de base API</label><input name="ikms_api_base_url" type="url" value="${escapeHtml(configuration.ikms_api_base_url)}" placeholder="https://projet.supabase.co/functions/v1/api-v1" ${lectureSeule}></div><div class="champ"><label>Page de creation du compte pro</label><input name="ikms_portail_pro_url" type="url" value="${escapeHtml(configuration.ikms_portail_pro_url)}" placeholder="https://..." ${lectureSeule}></div><div class="grille-deux"><div class="champ"><label>Cle API pour le catalogue des zones</label><input name="ikms_catalogue_api_key" type="password" autocomplete="new-password" placeholder="${configuration.ikms_catalogue_cle_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}" ${lectureSeule}><span class="champ-aide">Utilisee uniquement cote serveur pour GET /tarifs.</span></div><div class="champ"><label>Prix affiche « a partir de »</label><input name="livraison_a_partir_de" type="number" min="0" max="5000000" step="100" value="${Number(configuration.livraison_a_partir_de || 1000)}" ${lectureSeule}></div></div><div class="bande-info"><strong>Zones automatiques</strong><p class="petit" style="margin:5px 0 0">Les zones sont extraites de GET /tarifs et gardees en cache une heure. Il n'y a plus de liste a recopier manuellement.</p></div><button class="btn btn-primaire" id="sauver-ikms" ${lectureSeule}>${icone("save")} Enregistrer IKMS</button></form><form class="carte" id="email-transactionnel-form"><div class="ligne-entre"><h3>Emails de statut</h3>${badgeStatut(configuration.emails_transactionnels_actifs ? "ACTIF" : "SUSPENDUE")}</div><div class="champ"><label>Nom expediteur</label><input name="nom_expediteur" value="${escapeHtml(configuration.nom_expediteur_email)}" required ${lectureSeule}></div><div class="champ"><label>Email expediteur verifie</label><input name="email_expediteur" type="email" value="${escapeHtml(configuration.email_expediteur)}" required ${lectureSeule}></div><div class="champ"><label>URL publique</label><input name="site_public_url" type="url" value="${escapeHtml(configuration.site_public_url)}" required ${lectureSeule}></div><div class="champ"><label>Cle API Resend</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${configuration.email_api_configuree ? "Laisser vide pour conserver la cle" : "re_..."}" ${lectureSeule}></div><label class="case"><input name="actif" type="checkbox" ${configuration.emails_transactionnels_actifs ? "checked" : ""} ${lectureSeule}> Envoyer uniquement les quatre jalons client</label><button class="btn btn-primaire" id="sauver-emails" style="margin-top:16px" ${lectureSeule}>${icone("mail-check")} Enregistrer les emails</button></form></div><section class="section"><div class="ligne-entre"><div><h3>Missions IKMS</h3><p class="muted petit">Synchronisation automatique toutes les deux minutes</p></div></div>${donnees.missions.length ? `<div class="table-wrap"><table><thead><tr><th>Commande</th><th>Boutique</th><th>IKMS</th><th>Synchronisee</th><th>Tentatives</th><th>Statut</th><th>Erreur</th></tr></thead><tbody>${donnees.missions.map((mission) => `<tr><td><strong>${escapeHtml(mission.commandes_marketplace?.reference || mission.commande_id)}</strong></td><td>${escapeHtml(mission.commandes_marketplace?.boutiques?.nom || "")}</td><td><span class="petit">${escapeHtml(mission.commande_livraison_externe_id || "-")}<br>${escapeHtml(mission.statut_ikms || "-")}</span></td><td>${mission.derniere_synchronisation ? formatDate(mission.derniere_synchronisation, true) : "-"}</td><td>${mission.tentatives}</td><td>${badgeStatut(mission.statut)}</td><td class="muted petit">${escapeHtml(mission.derniere_erreur || "")}</td></tr>`).join("")}</tbody></table></div>` : vide("truck", "Aucune mission logistique", "Les missions apparaitront apres la transmission d'une commande prete.")}</section>`;
   zone.querySelector("#ikms-plateforme-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = zone.querySelector("#sauver-ikms");
@@ -378,21 +378,22 @@ function afficherLivraisons(admin, donnees) {
     let payload;
     try {
       payload = {
-        ikms_tenant_nom: valeurs.ikms_tenant_nom.trim(),
-        ikms_tenant_code: valeurs.ikms_tenant_code.trim().toUpperCase(),
-        ikms_api_base_url: normaliserUrlIkms(valeurs.ikms_api_base_url),
-        ikms_portail_pro_url: valeurs.ikms_portail_pro_url?.trim() || null,
-        zones_livraison: lireZones(valeurs.zones_livraison),
+        p_ikms_tenant_nom: valeurs.ikms_tenant_nom.trim(),
+        p_ikms_tenant_code: valeurs.ikms_tenant_code.trim().toUpperCase(),
+        p_ikms_api_base_url: normaliserUrlIkms(valeurs.ikms_api_base_url),
+        p_ikms_portail_pro_url: valeurs.ikms_portail_pro_url?.trim() || null,
+        p_ikms_catalogue_api_key: valeurs.ikms_catalogue_api_key || null,
+        p_livraison_a_partir_de: Number(valeurs.livraison_a_partir_de || 1000),
       };
     } catch (error) {
       return gererErreur(error);
     }
     boutonOccupe(button, true, "Enregistrement...");
-    const { error } = await supabase.from("configuration_marketplace").update(payload).eq("id", 1);
+    const { error } = await supabase.rpc("rpc_configurer_ikms_plateforme", payload);
     boutonOccupe(button, false);
     if (error) return gererErreur(error);
-    Object.assign(configuration, payload);
     toast("Configuration IKMS enregistree");
+    location.reload();
   });
   zone.querySelector("#email-transactionnel-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();

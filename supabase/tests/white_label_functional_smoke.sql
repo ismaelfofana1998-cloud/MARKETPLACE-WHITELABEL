@@ -17,6 +17,8 @@ declare
   v_variante_a uuid;
   v_variante_b uuid;
   v_resolution jsonb;
+  v_adresse uuid;
+  v_achat uuid;
   v_nombre integer;
 begin
   insert into auth.users (id, email, raw_user_meta_data, created_at, updated_at)
@@ -92,6 +94,42 @@ begin
   exception when insufficient_privilege or check_violation then
     null;
   end;
+
+  insert into public.adresses_livraison (
+    identite_id, libelle, destinataire_nom, telephone, adresse,
+    commune, code_zone, principale
+  ) values (
+    v_client, 'Domicile', 'Client Smoke', '0700000000',
+    'Adresse de test', 'Cocody', 'COCODY', true
+  ) returning id into v_adresse;
+
+  v_achat := public.rpc_valider_panier_tarife(
+    v_client,
+    v_adresse,
+    'A_LA_LIVRAISON',
+    'Tarif smoke',
+    v_boutique_a,
+    jsonb_build_object(v_boutique_a::text, 1500)
+  );
+  if not exists (
+    select 1 from public.commandes_marketplace
+    where achat_id = v_achat
+      and boutique_id = v_boutique_a
+      and frais_livraison = 0
+      and total = sous_total
+      and frais_livraison_a_confirmer
+  ) then
+    raise exception 'L''estimation IKMS ne doit pas etre facturee avant POST /commandes';
+  end if;
+  if exists (
+    select 1
+    from public.paiements_marketplace p
+    join public.achats a on a.id = p.achat_id
+    where p.achat_id = v_achat
+      and p.montant <> a.sous_total
+  ) then
+    raise exception 'Le paiement provisoire contient une estimation de livraison';
+  end if;
 end $$;
 
 select set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000004', true);

@@ -48,7 +48,9 @@ export const configurationDefaut = {
   ikms_tenant_code: "IKIGAI",
   ikms_api_base_url: null,
   ikms_portail_pro_url: null,
+  ikms_catalogue_cle_configuree: false,
   zones_livraison: [],
+  livraison_a_partir_de: 1000,
   nom_expediteur_email: "IKIGAI Market",
   email_expediteur: null,
   email_api_configuree: false,
@@ -57,6 +59,61 @@ export const configurationDefaut = {
 
 export const fcfa = (value) =>
   `${new Intl.NumberFormat("fr-FR").format(Number(value || 0))} FCFA`;
+
+const CACHE_ZONES_MS = 60 * 60 * 1000;
+let cacheZonesIkms = null;
+let chargementZonesIkms = null;
+
+export async function chargerZonesIkms(configuration = configurationDefaut, forcer = false) {
+  if (
+    !forcer && cacheZonesIkms &&
+    Date.now() - cacheZonesIkms.chargeLe < CACHE_ZONES_MS
+  ) {
+    return cacheZonesIkms;
+  }
+  if (!supabase) {
+    return {
+      zones: configuration.zones_livraison || [],
+      minimum: Number(configuration.livraison_a_partir_de || 1000),
+      disponible: false,
+      chargeLe: Date.now(),
+    };
+  }
+  if (!chargementZonesIkms) {
+    chargementZonesIkms = supabase.functions.invoke("zones-ikms", { body: {} })
+      .then(({ data, error }) => {
+        const resultat = data?.data || {};
+        const zonesApi = Array.isArray(resultat.zones) ? resultat.zones : [];
+        const zonesSecours = Array.isArray(configuration.zones_livraison)
+          ? configuration.zones_livraison
+          : [];
+        const valeur = {
+          zones: zonesApi.length ? zonesApi : zonesSecours,
+          minimum: Number(resultat.minimum || configuration.livraison_a_partir_de || 1000),
+          disponible: !error && resultat.disponible === true,
+          chargeLe: Date.now(),
+        };
+        cacheZonesIkms = valeur;
+        return valeur;
+      })
+      .catch(() => {
+        const valeur = {
+          zones: Array.isArray(configuration.zones_livraison)
+            ? configuration.zones_livraison
+            : [],
+          minimum: Number(configuration.livraison_a_partir_de || 1000),
+          disponible: false,
+          chargeLe: Date.now(),
+        };
+        cacheZonesIkms = valeur;
+        return valeur;
+      })
+      .finally(() => {
+        chargementZonesIkms = null;
+      });
+  }
+  return chargementZonesIkms;
+}
 
 export const formatDate = (value, avecHeure = false) => {
   if (!value) return "";
