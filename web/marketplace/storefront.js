@@ -9,7 +9,7 @@ import {
   rafraichirIcones,
   supabase,
   toast,
-} from "../assets/api.js?v=17";
+} from "../assets/api.js?v=18";
 import {
   actualiserCompteurPanier,
   app,
@@ -30,7 +30,7 @@ import {
   rafraichirExperience,
   squelettePage,
   vide,
-} from "./shared.js?v=17";
+} from "./shared.js?v=18";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -93,7 +93,7 @@ export async function rendreAccueil() {
     main.innerHTML = `<section class="promo-market ${modeBandeau}" aria-label="Bandeau principal">${imagesBandeau.length ? `<div class="promo-market-slides">${imagesBandeau.map((url, index) => `<div class="promo-market-slide ${index === 0 ? "actif" : ""}" aria-hidden="${index === 0 ? "false" : "true"}"><img src="${escapeHtml(url)}" alt=""></div>`).join("")}</div>` : ""}<div class="promo-market-contenu"><div class="promo-market-carte"><p class="promo-sur-titre">Le marché ivoirien à portée de main</p><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><div class="promo-actions"><a class="promo-action-principale" href="#produits">Voir les produits ${icone("arrow-down")}</a></div></div></div>${imagesBandeau.length > 1 ? `<div class="promo-commandes"><button type="button" data-hero-precedent aria-label="Image précédente">${icone("chevron-left")}</button><div class="promo-indicateurs">${imagesBandeau.map((_, index) => `<button type="button" data-hero-index="${index}" aria-label="Afficher l'image ${index + 1}" ${index === 0 ? 'aria-current="true"' : ""}></button>`).join("")}</div><button type="button" data-hero-suivant aria-label="Image suivante">${icone("chevron-right")}</button></div>` : ""}</section>
       <div class="conteneur catalogue-conteneur">
         <section class="catalogue-layout" id="produits">
-          <aside class="filtres-catalogue" id="filtres-catalogue" aria-label="Catégories et filtres du catalogue">
+          <aside class="filtres-catalogue" id="filtres-catalogue" aria-label="Catégories et filtres du catalogue" aria-hidden="true" inert>
             <div class="filtres-entete"><div><p class="sur-titre">Explorer</p><h2>Catégories et filtres</h2></div><button class="dialogue-fermer fermer-filtres" type="button" aria-label="Fermer le menu">${icone("x")}</button></div>
             <div class="menu-categories" aria-label="Catégories de produits">
               <button type="button" data-categorie="">${icone("layout-grid")} Tous les produits</button>
@@ -198,7 +198,10 @@ export async function rendreAccueil() {
       history.pushState({}, "", `${location.pathname}${params.size ? `?${params}` : ""}#produits`);
     };
     const fermerFiltres = () => {
-      document.querySelector("#filtres-catalogue").classList.remove("ouvert");
+      const panneau = document.querySelector("#filtres-catalogue");
+      panneau.classList.remove("ouvert");
+      panneau.setAttribute("aria-hidden", "true");
+      panneau.setAttribute("inert", "");
       document.querySelector("#fond-filtres").classList.remove("visible");
       document.body.classList.remove("filtres-ouverts");
     };
@@ -316,13 +319,17 @@ export async function rendreAccueil() {
     document.querySelectorAll("[data-categorie]").forEach((button) => button.addEventListener("click", async () => {
       filtres.categorieId = button.dataset.categorie;
       filtres.page = 1;
+      fermerFiltres();
       synchroniserFormulaire();
       mettreAJourUrl();
       await afficherCatalogue();
       recentrerCatalogue();
     }));
     document.querySelector(".ouvrir-filtres").addEventListener("click", () => {
-      document.querySelector("#filtres-catalogue").classList.add("ouvert");
+      const panneau = document.querySelector("#filtres-catalogue");
+      panneau.classList.add("ouvert");
+      panneau.removeAttribute("aria-hidden");
+      panneau.removeAttribute("inert");
       document.querySelector("#fond-filtres").classList.add("visible");
       document.body.classList.add("filtres-ouverts");
       document.querySelector(".fermer-filtres").focus();

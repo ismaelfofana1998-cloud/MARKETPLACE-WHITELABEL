@@ -13,7 +13,7 @@ import {
   supabase,
   tonaliteStatut,
   toast,
-} from "../assets/api.js?v=17";
+} from "../assets/api.js?v=18";
 
 export const app = document.querySelector("#market-app");
 export const etat = {
@@ -412,9 +412,9 @@ export async function chargerCategories() {
       .order("ordre")
       .order("nom");
     if (erreurBoutique) throw erreurBoutique;
-    if (etat.configuration.masquer_categories_globales !== false) return categoriesBoutique || [];
+    if (etat.configuration.masquer_categories_globales !== false) return corrigerNomsCategories(categoriesBoutique);
     const categoriesGlobales = await chargerCategoriesGlobales();
-    return [...(categoriesBoutique || []), ...categoriesGlobales];
+    return [...corrigerNomsCategories(categoriesBoutique), ...categoriesGlobales];
   }
   return chargerCategoriesGlobales();
 }
@@ -437,7 +437,18 @@ async function chargerCategoriesGlobales() {
     error = ancienSchema.error;
   }
   if (error) throw error;
-  return data || [];
+  return corrigerNomsCategories(data);
+}
+
+function corrigerNomsCategories(categories = []) {
+  const corrections = {
+    Beaute: "Beauté",
+    Epicerie: "Épicerie",
+  };
+  return (categories || []).map((categorie) => ({
+    ...categorie,
+    nom: corrections[categorie.nom] || categorie.nom,
+  }));
 }
 
 export function normaliserProduit(produit) {

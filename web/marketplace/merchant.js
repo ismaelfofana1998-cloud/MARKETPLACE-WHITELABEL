@@ -14,7 +14,7 @@ import {
   supabase,
   televerserImage,
   toast,
-} from "../assets/api.js?v=17";
+} from "../assets/api.js?v=18";
 import {
   app,
   badgeStatut,
@@ -24,12 +24,12 @@ import {
   gererErreur,
   squelettePage,
   vide,
-} from "./shared.js?v=17";
+} from "./shared.js?v=18";
 import {
   rendreCodesMission,
   rendreComparaisonFrais,
   rendreParcoursLivraison,
-} from "./logistics.js?v=17";
+} from "./logistics.js?v=18";
 
 let canalCommandes = null;
 

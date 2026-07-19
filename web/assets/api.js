@@ -223,7 +223,11 @@ export async function chargerConfiguration() {
     .eq("id", 1)
     .maybeSingle();
   if (error) return configurationDefaut;
-  return { ...configurationDefaut, ...(data || {}) };
+  const configuration = { ...configurationDefaut, ...(data || {}) };
+  if (configuration.slogan === "Les boutiques d'ici, livrees par IKIGAI.") {
+    configuration.slogan = "Les boutiques d'ici, livrées par IKIGAI.";
+  }
+  return configuration;
 }
 
 export function appliquerTheme(configuration) {

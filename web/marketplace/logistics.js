@@ -2,7 +2,7 @@ import {
   escapeHtml,
   fcfa,
   icone,
-} from "../assets/api.js?v=17";
+} from "../assets/api.js?v=18";
 
 export function statutSuiviMarketplace(statutCommande) {
   if (statutCommande === "ANNULEE") return "ANNULEE";

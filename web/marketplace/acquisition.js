@@ -3,13 +3,13 @@ import {
   fcfa,
   icone,
   rafraichirIcones,
-} from "../assets/api.js?v=17";
+} from "../assets/api.js?v=18";
 import {
   app,
   coquille,
   etat,
   rafraichirExperience,
-} from "./shared.js?v=17";
+} from "./shared.js?v=18";
 
 export async function rendreAcquisition() {
   const retourMarchand = "./marchand.html";
