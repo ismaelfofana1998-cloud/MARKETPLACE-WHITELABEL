@@ -54,7 +54,7 @@ async function rendreAuthentification() {
   const optionsZones = catalogueZones.zones
     .map((zone) => `<option value="${escapeHtml(zone.code)}">${escapeHtml(zone.nom || zone.code)}</option>`)
     .join("");
-  coquille(`<main class="conteneur conteneur-etroit"><div class="auth-form" style="margin:28px auto"><div class="entete-page"><div><h1>Mon compte</h1><p class="muted">Commandes, adresses et favoris</p></div></div><div class="onglets"><button class="onglet" data-auth="connexion">Connexion</button><button class="onglet" data-auth="inscription">Creer un compte</button></div><div id="auth-zone" style="padding-top:20px"></div></div></main>`, { actif: "compte" });
+  coquille(`<main class="conteneur conteneur-etroit"><div class="auth-form" style="margin:28px auto"><div class="entete-page"><div><h1>Mon compte</h1><p class="muted">Commandes, adresses et favoris</p></div></div><div class="onglets"><button class="onglet" data-auth="connexion">Connexion</button><button class="onglet" data-auth="inscription">Créer un compte</button></div><div id="auth-zone" style="padding-top:20px"></div></div></main>`, { actif: "compte" });
 
   const afficher = (mode) => {
     document.querySelectorAll("[data-auth]").forEach((button) => button.classList.toggle("actif", button.dataset.auth === mode));
@@ -62,15 +62,15 @@ async function rendreAuthentification() {
     document.querySelector("#auth-zone").innerHTML = `<form id="auth-form">
       ${inscription ? `<div class="grille-deux"><div class="champ"><label>Prénom</label><input name="prenom" autocomplete="given-name" required></div><div class="champ"><label>Nom</label><input name="nom" autocomplete="family-name" required></div></div><div class="champ"><label>Téléphone</label><input name="telephone" type="tel" autocomplete="tel"></div><div class="champ"><label>Zone de livraison habituelle</label>${optionsZones ? `<select name="zone_livraison" required><option value="">Choisir une zone</option>${optionsZones}</select>` : '<input name="zone_livraison" placeholder="COCODY" required>'}<span class="champ-aide">Elle sera proposée automatiquement au checkout et restera modifiable.</span></div>` : ""}
       <div class="champ"><label>Email</label><input name="email" type="email" value="${escapeHtml(emailInitial)}" autocomplete="email" required></div>
-      <div class="champ"><label>Mot de passe</label><input name="password" type="password" minlength="8" autocomplete="${inscription ? "new-password" : "current-password"}" required><span class="champ-aide">8 caracteres minimum</span></div>
-      <button class="btn btn-primaire btn-bloc" id="auth-submit">${icone(inscription ? "user-plus" : "log-in")} ${inscription ? "Creer mon compte" : "Se connecter"}</button>
+      <div class="champ"><label>Mot de passe</label><input name="password" type="password" minlength="8" autocomplete="${inscription ? "new-password" : "current-password"}" required><span class="champ-aide">8 caractères minimum</span></div>
+      <button class="btn btn-primaire btn-bloc" id="auth-submit">${icone(inscription ? "user-plus" : "log-in")} ${inscription ? "Créer mon compte" : "Se connecter"}</button>
     </form>${!inscription ? '<button class="btn btn-texte" id="mot-de-passe-oublie" style="margin-top:10px">Mot de passe oublié</button>' : '<p class="muted petit" style="margin-top:13px">Un email de confirmation peut être demandé selon les réglages du compte.</p>'}`;
     rafraichirIcones(document.querySelector("#auth-zone"));
     document.querySelector("#auth-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const valeurs = Object.fromEntries(new FormData(event.currentTarget));
       const button = document.querySelector("#auth-submit");
-      boutonOccupe(button, true, inscription ? "Creation..." : "Connexion...");
+      boutonOccupe(button, true, inscription ? "Création..." : "Connexion...");
       const resultat = inscription
         ? await supabase.auth.signUp({
             email: valeurs.email.trim(),
@@ -89,7 +89,7 @@ async function rendreAuthentification() {
       const email = document.querySelector('[name="email"]').value.trim();
       if (!email) return toast("Saisis d'abord ton email.", true);
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: urlIdentity("recuperation") });
-      error ? gererErreur(error) : toast("Lien de reinitialisation envoye");
+      error ? gererErreur(error) : toast("Lien de réinitialisation envoyé");
     });
   };
   document.querySelectorAll("[data-auth]").forEach((button) => button.addEventListener("click", () => afficher(button.dataset.auth)));

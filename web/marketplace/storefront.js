@@ -414,7 +414,7 @@ export async function rendreProduit() {
         </div>
       </section>
       <section class="section"><div class="carte boutique-carte"><img class="boutique-logo" src="${escapeHtml(produit.boutique?.logo_url || images[0])}" alt=""><div><h2>${escapeHtml(produit.boutique?.nom)}</h2><p class="muted petit">${escapeHtml(produit.boutique?.description || produit.boutique?.adresse || "Marchand IKIGAI Market")}</p><a class="btn btn-secondaire" href="./index.html?boutique=${produit.boutique_id}#produits">Voir ses produits</a></div></div></section>
-      ${similaires.length ? `<section class="section"><div class="entete-page"><div><h2>Produits similaires</h2><p class="muted petit">Dans la meme categorie</p></div><a class="btn btn-texte" href="./index.html?categorie=${categorieEffective}#produits">Tout voir ${icone("arrow-right")}</a></div><div class="grille-produits" id="produits-similaires">${similaires.map((element) => carteProduit(element, favoris)).join("")}</div></section>` : ""}
+      ${similaires.length ? `<section class="section"><div class="entete-page"><div><h2>Produits similaires</h2><p class="muted petit">Dans la même catégorie</p></div><a class="btn btn-texte" href="./index.html?categorie=${categorieEffective}#produits">Tout voir ${icone("arrow-right")}</a></div><div class="grille-produits" id="produits-similaires">${similaires.map((element) => carteProduit(element, favoris)).join("")}</div></section>` : ""}
       <section class="section"><h2>Avis clients</h2><div class="pile">${avis.length ? avis.slice(0, 8).map((avisProduit) => `<article class="carte"><div class="ligne-entre"><strong>${escapeHtml(`${avisProduit.identites?.prenom || "Client"} ${avisProduit.identites?.nom?.[0] || ""}`.trim())}</strong><span class="note">${icone("star")} ${avisProduit.note}/5</span></div><p class="muted petit" style="margin:8px 0 0">${escapeHtml(avisProduit.commentaire || "A recommandé ce produit.")}</p></article>`).join("") : '<p class="muted">Aucun avis pour le moment.</p>'}</div></section>
     </main>`);
     brancherFavoris(app, favoris);
@@ -481,7 +481,7 @@ export async function chargerLignesPanier() {
 
 export async function rendrePanier() {
   if (!etat.session) {
-    coquille(`<main class="conteneur">${vide("shopping-bag", "Connecte-toi pour retrouver ton panier", "Ton panier et tes commandes sont synchronises sur tous tes appareils.", '<button class="btn btn-primaire" id="connexion-panier">Se connecter</button>')}</main>`, { actif: "panier" });
+    coquille(`<main class="conteneur">${vide("shopping-bag", "Connecte-toi pour retrouver ton panier", "Ton panier et tes commandes sont synchronisés sur tous tes appareils.", '<button class="btn btn-primaire" id="connexion-panier">Se connecter</button>')}</main>`, { actif: "panier" });
     document.querySelector("#connexion-panier").addEventListener("click", () => demanderConnexion("./panier.html"));
     return;
   }
