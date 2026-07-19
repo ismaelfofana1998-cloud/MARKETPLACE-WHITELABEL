@@ -9,7 +9,7 @@ import {
   rafraichirIcones,
   supabase,
   toast,
-} from "../assets/api.js?v=15";
+} from "../assets/api.js?v=16";
 import {
   actualiserCompteurPanier,
   app,
@@ -27,8 +27,10 @@ import {
   estSiteDedie,
   gererErreur,
   normaliserProduit,
+  rafraichirExperience,
+  squelettePage,
   vide,
-} from "./shared.js?v=15";
+} from "./shared.js?v=16";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -65,7 +67,7 @@ export async function rendreAccueil() {
   };
   let filtres = lireFiltres();
   if (estSiteDedie()) filtres.boutiqueId = boutiqueContexteId();
-  coquille('<main><div class="conteneur"><div class="vide">Chargement du catalogue...</div></div></main>', { actif: "accueil" });
+  coquille(squelettePage("catalogue"), { actif: "accueil" });
 
   try {
     const [categories, boutiques, favoris] = await Promise.all([
@@ -85,9 +87,20 @@ export async function rendreAccueil() {
       : [etat.configuration.hero_image_url]).filter(Boolean))].slice(0, 6);
     const modeBandeau = etat.configuration.hero_mode_affichage === "COVER" ? "promo-market-remplir" : "";
     const main = document.querySelector("main");
-    main.innerHTML = `<section class="promo-market ${modeBandeau}" aria-label="Bandeau principal">${imagesBandeau.length ? `<div class="promo-market-slides">${imagesBandeau.map((url, index) => `<div class="promo-market-slide ${index === 0 ? "actif" : ""}" aria-hidden="${index === 0 ? "false" : "true"}"><img src="${escapeHtml(url)}" alt=""></div>`).join("")}</div>` : ""}<div class="promo-market-contenu"><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><a href="#produits">Explorer le catalogue ${icone("arrow-down")}</a></div>${imagesBandeau.length > 1 ? `<div class="promo-commandes"><button type="button" data-hero-precedent aria-label="Image precedente">${icone("chevron-left")}</button><div class="promo-indicateurs">${imagesBandeau.map((_, index) => `<button type="button" data-hero-index="${index}" aria-label="Afficher l'image ${index + 1}" ${index === 0 ? 'aria-current="true"' : ""}></button>`).join("")}</div><button type="button" data-hero-suivant aria-label="Image suivante">${icone("chevron-right")}</button></div>` : ""}</section>
+    main.className = "page-visible";
+    main.removeAttribute("aria-busy");
+    main.removeAttribute("aria-label");
+    main.innerHTML = `<section class="promo-market ${modeBandeau}" aria-label="Bandeau principal">${imagesBandeau.length ? `<div class="promo-market-slides">${imagesBandeau.map((url, index) => `<div class="promo-market-slide ${index === 0 ? "actif" : ""}" aria-hidden="${index === 0 ? "false" : "true"}"><img src="${escapeHtml(url)}" alt=""></div>`).join("")}</div>` : ""}<div class="promo-market-contenu"><div class="promo-market-carte"><p class="promo-sur-titre">Le commerce ivoirien, simplement</p><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><div class="promo-actions"><a class="promo-action-principale" href="#produits">Découvrir les produits ${icone("arrow-right")}</a>${siteDedie ? "" : `<a class="promo-action-secondaire" href="./marchand.html">Ouvrir ma boutique</a>`}</div><div class="promo-preuves"><span>${icone("badge-check")} Marchands identifiés</span><span>${icone("banknote")} Prix en FCFA</span><span>${icone("truck")} Livraison IKMS</span></div></div></div>${imagesBandeau.length > 1 ? `<div class="promo-commandes"><button type="button" data-hero-precedent aria-label="Image précédente">${icone("chevron-left")}</button><div class="promo-indicateurs">${imagesBandeau.map((_, index) => `<button type="button" data-hero-index="${index}" aria-label="Afficher l'image ${index + 1}" ${index === 0 ? 'aria-current="true"' : ""}></button>`).join("")}</div><button type="button" data-hero-suivant aria-label="Image suivante">${icone("chevron-right")}</button></div>` : ""}</section>
       <div class="services-market"><div><span>${icone("truck")}</span><p><strong>Livraison IKIGAI</strong><small>Suivi de la commande a la remise</small></p></div><div><span>${icone("shield-check")}</span><p><strong>Marchands identifies</strong><small>Boutiques et equipes controlees</small></p></div><div><span>${icone("rotate-ccw")}</span><p><strong>Commandes centralisees</strong><small>Retours et historique dans votre compte</small></p></div></div>
       <div class="conteneur catalogue-conteneur">
+        <section class="ecosysteme-market" aria-labelledby="titre-ecosysteme">
+          <div class="ecosysteme-intro"><p class="sur-titre">Un écosystème pensé pour la Côte d'Ivoire</p><h2 id="titre-ecosysteme">Acheter, vendre et livrer dans un même parcours</h2><p>IKIGAI relie les clients, les marchands et la logistique locale sans compliquer leur quotidien.</p></div>
+          <div class="ecosysteme-grille">
+            <article><span class="ecosysteme-icone">${icone("shopping-bag")}</span><div><strong>Acheter local</strong><p>Des boutiques ivoiriennes accessibles depuis un catalogue unique.</p></div></article>
+            <article><span class="ecosysteme-icone">${icone("store")}</span><div><strong>Vendre simplement</strong><p>Produits, commandes et clients réunis dans l'espace marchand.</p></div></article>
+            <article><span class="ecosysteme-icone">${icone("route")}</span><div><strong>Livrer avec IKMS</strong><p>Une estimation par zone et un suivi clair jusqu'à la remise.</p></div></article>
+          </div>
+        </section>
         <section class="section categories-market" id="categories">
           <div class="entete-page"><div><h2>Parcourir les categories</h2><p class="muted petit">Acces rapide aux rayons du catalogue</p></div></div>
           ${categories.length ? `<div class="grille-categories"><button class="categorie" data-categorie=""><img src="${escapeHtml(etat.configuration.hero_image_url)}" alt=""><span>Tout le catalogue</span></button>${categories.map((categorie) => `<button class="categorie" data-categorie="${categorie.id}"><img src="${escapeHtml(categorie.image_url || etat.configuration.hero_image_url)}" alt=""><span>${escapeHtml(categorie.nom)}</span></button>`).join("")}</div>` : vide("layout-grid", "Les categories arrivent", "Les produits restent accessibles dans le catalogue.")}
@@ -108,13 +121,14 @@ export async function rendreAccueil() {
           <section class="resultats-catalogue">
             <div class="resultats-entete"><div><p class="sur-titre" id="contexte-resultats">Catalogue ${escapeHtml(etat.configuration.nom)}</p><h2 id="titre-resultats">Produits disponibles</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div><div class="outils-resultats"><button class="btn btn-secondaire ouvrir-filtres" type="button">${icone("list-filter")} Filtres</button>${filtresDisponibles.tri === false ? "" : '<label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautes</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix decroissant</option><option value="NOTE">Mieux notes</option></select>'}</div></div>
             <div class="filtres-actifs" id="filtres-actifs"></div>
-            <div class="grille-produits" id="grille-produits"><div class="vide">Chargement des produits...</div></div>
+            <div class="grille-produits grille-squelettes-produits" id="grille-produits" aria-busy="true">${Array.from({ length: 8 }, () => '<div class="squelette squelette-produit"></div>').join("")}</div>
             <nav class="pagination" id="pagination" aria-label="Pagination du catalogue"></nav>
           </section>
         </section>
         ${siteDedie && etat.configuration.masquer_autres_boutiques !== false ? "" : `<section class="section" id="boutiques"><div class="entete-page"><div><h2>Boutiques a decouvrir</h2><p class="muted petit">Achetez directement aupres de marchands partenaires</p></div></div><div class="grille-boutiques">${boutiques.slice(0, 9).map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique partenaire IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiee", "La premiere boutique apparaitra ici des sa publication.")}</div></section>`}
       </div>
       <div class="fond-filtres" id="fond-filtres"></div>`;
+    rafraichirExperience(main);
 
     const promo = document.querySelector(".promo-market");
     const diapositives = [...promo.querySelectorAll(".promo-market-slide")];
@@ -235,6 +249,7 @@ export async function rendreAccueil() {
       try {
         const resultat = await chargerProduits(filtres);
         if (requeteCatalogue !== derniereRequeteCatalogue) return;
+        grille.classList.remove("grille-squelettes-produits");
         grille.innerHTML = resultat.produits.length
           ? resultat.produits.map((produit) => carteProduit(produit, favoris)).join("")
           : vide("search-x", "Aucun produit trouve", "Essaie une autre recherche ou retire certains filtres.", '<button class="btn btn-secondaire" id="reinitialiser-catalogue">Tout afficher</button>');
@@ -258,6 +273,7 @@ export async function rendreAccueil() {
         });
         brancherFavoris(grille, favoris);
         brancherAjoutsPanier(grille);
+        rafraichirExperience(grille);
         afficherFiltresActifs();
         rafraichirIcones(grille.parentElement);
       } catch (error) {
@@ -266,6 +282,7 @@ export async function rendreAccueil() {
       } finally {
         if (requeteCatalogue === derniereRequeteCatalogue) {
           grille.classList.remove("chargement");
+          grille.classList.remove("grille-squelettes-produits");
           grille.removeAttribute("aria-busy");
         }
       }
@@ -360,7 +377,7 @@ export async function rendreProduit() {
     coquille(`<main class="conteneur">${vide("package-x", "Produit introuvable", "Le lien ne contient pas d'identifiant produit.")}</main>`);
     return;
   }
-  coquille('<main class="conteneur"><div class="vide">Chargement du produit...</div></main>');
+  coquille(squelettePage("detail"));
   try {
     const [produit, favoris] = await Promise.all([chargerProduit(id), chargerFavoris()]);
     if (!produit) {
@@ -464,7 +481,7 @@ export async function rendrePanier() {
     document.querySelector("#connexion-panier").addEventListener("click", () => demanderConnexion("./panier.html"));
     return;
   }
-  coquille('<main class="conteneur"><div class="vide">Chargement du panier...</div></main>', { actif: "panier" });
+  coquille(squelettePage("contenu"), { actif: "panier" });
   try {
     const lignes = await chargerLignesPanier();
     const sousTotal = lignes.reduce((total, ligne) => total + ligne.produit.prix_effectif * ligne.quantite, 0);
@@ -493,7 +510,7 @@ export async function rendrePanier() {
 
 export async function rendreCheckout() {
   if (!etat.session) return demanderConnexion("./checkout.html");
-  coquille('<main class="conteneur"><div class="vide">Preparation de la commande...</div></main>', { actif: "panier" });
+  coquille(squelettePage("contenu"), { actif: "panier" });
   try {
     const [lignes, profilResultat, adressesResultat, catalogueZones] = await Promise.all([
       chargerLignesPanier(),
