@@ -981,7 +981,6 @@ main.page-visible {
   }
   .apparition { opacity: 1; transform: none; }
 }
-
 /* Page d'acquisition des futurs tenants. */
 .sr-only {
   position: absolute !important;
