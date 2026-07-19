@@ -14,7 +14,7 @@ import {
   supabase,
   televerserImage,
   toast,
-} from "../assets/api.js?v=15";
+} from "../assets/api.js?v=16";
 import {
   app,
   badgeStatut,
@@ -22,13 +22,14 @@ import {
   demanderConnexion,
   etat,
   gererErreur,
+  squelettePage,
   vide,
-} from "./shared.js?v=15";
+} from "./shared.js?v=16";
 import {
   rendreCodesMission,
   rendreComparaisonFrais,
   rendreParcoursLivraison,
-} from "./logistics.js?v=15";
+} from "./logistics.js?v=16";
 
 let canalCommandes = null;
 
@@ -221,7 +222,7 @@ async function annulerCommandeMarchand(commande, button) {
 
 export async function rendreMarchand() {
   if (!etat.session) return demanderConnexion();
-  coquille('<main class="conteneur"><div class="vide">Chargement de l\'espace marchand...</div></main>', { mode: "gestion", espace: "Espace marchand" });
+  coquille(squelettePage("contenu"), { mode: "gestion", espace: "Espace marchand" });
   try {
     const [organisations, adminPlateforme] = await Promise.all([
       chargerAccesMarchands(),

@@ -15,7 +15,7 @@ import {
   toast,
   urlConfirmationCourante,
   urlIdentity,
-} from "../assets/api.js?v=15";
+} from "../assets/api.js?v=16";
 import {
   app,
   badgeStatut,
@@ -27,12 +27,13 @@ import {
   etat,
   gererErreur,
   normaliserProduit,
+  squelettePage,
   vide,
-} from "./shared.js?v=15";
+} from "./shared.js?v=16";
 import {
   rendreParcoursLivraison,
   statutSuiviMarketplace,
-} from "./logistics.js?v=15";
+} from "./logistics.js?v=16";
 
 function demanderMotifAnnulationClient() {
   const motif = prompt("Motif de l'annulation");
@@ -46,7 +47,9 @@ function demanderMotifAnnulationClient() {
 }
 
 async function rendreAuthentification() {
-  const modeInitial = new URLSearchParams(location.search).get("mode") === "inscription" ? "inscription" : "connexion";
+  const parametres = new URLSearchParams(location.search);
+  const modeInitial = parametres.get("mode") === "inscription" ? "inscription" : "connexion";
+  const emailInitial = (parametres.get("email") || "").trim().slice(0, 254);
   const catalogueZones = await chargerZonesIkms(etat.configuration);
   const optionsZones = catalogueZones.zones
     .map((zone) => `<option value="${escapeHtml(zone.code)}">${escapeHtml(zone.nom || zone.code)}</option>`)
@@ -58,7 +61,7 @@ async function rendreAuthentification() {
     const inscription = mode === "inscription";
     document.querySelector("#auth-zone").innerHTML = `<form id="auth-form">
       ${inscription ? `<div class="grille-deux"><div class="champ"><label>Prenom</label><input name="prenom" autocomplete="given-name" required></div><div class="champ"><label>Nom</label><input name="nom" autocomplete="family-name" required></div></div><div class="champ"><label>Telephone</label><input name="telephone" type="tel" autocomplete="tel"></div><div class="champ"><label>Zone de livraison habituelle</label>${optionsZones ? `<select name="zone_livraison" required><option value="">Choisir une zone</option>${optionsZones}</select>` : '<input name="zone_livraison" placeholder="COCODY" required>'}<span class="champ-aide">Elle sera proposee automatiquement au checkout et restera modifiable.</span></div>` : ""}
-      <div class="champ"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+      <div class="champ"><label>Email</label><input name="email" type="email" value="${escapeHtml(emailInitial)}" autocomplete="email" required></div>
       <div class="champ"><label>Mot de passe</label><input name="password" type="password" minlength="8" autocomplete="${inscription ? "new-password" : "current-password"}" required><span class="champ-aide">8 caracteres minimum</span></div>
       <button class="btn btn-primaire btn-bloc" id="auth-submit">${icone(inscription ? "user-plus" : "log-in")} ${inscription ? "Creer mon compte" : "Se connecter"}</button>
     </form>${!inscription ? '<button class="btn btn-texte" id="mot-de-passe-oublie" style="margin-top:10px">Mot de passe oublie</button>' : '<p class="muted petit" style="margin-top:13px">Un email de confirmation peut etre demande selon les reglages Supabase.</p>'}`;
@@ -146,7 +149,7 @@ export async function rendreCompte() {
     }
     history.replaceState({}, "", pageCompte);
   }
-  coquille('<main class="conteneur"><div class="vide">Chargement du compte...</div></main>', { actif: "compte" });
+  coquille(squelettePage("contenu"), { actif: "compte" });
   try {
     await supabase.functions.invoke("sync-livraisons", { body: {} }).catch(() => null);
     const [donnees, catalogueZones] = await Promise.all([

@@ -1,6 +1,7 @@
 import {
   appliquerTheme,
   boutonOccupe,
+  chargerZonesIkms,
   configurationDefaut,
   escapeHtml,
   fcfa,
@@ -15,7 +16,7 @@ import {
   supprimerImageStockage,
   televerserImage,
   toast,
-} from "../assets/api.js?v=15";
+} from "../assets/api.js?v=16";
 import {
   app,
   badgeStatut,
@@ -23,8 +24,9 @@ import {
   demanderConnexion,
   etat,
   gererErreur,
+  squelettePage,
   vide,
-} from "./shared.js?v=15";
+} from "./shared.js?v=16";
 
 async function verifierAdmin() {
   const { data, error } = await supabase
@@ -83,7 +85,7 @@ async function chargerAdministration() {
 
 export async function rendreAdmin() {
   if (!etat.session) return demanderConnexion();
-  coquille('<main class="conteneur"><div class="vide">Verification des droits...</div></main>', { mode: "gestion", espace: "Administration" });
+  coquille(squelettePage("contenu"), { mode: "gestion", espace: "Administration" });
   try {
     const admin = await verifierAdmin();
     if (!admin) { afficherInitialisation(); return; }
@@ -161,18 +163,79 @@ function ouvrirOffreOrganisation(donnees, organisationId) {
   rafraichirIcones(document.querySelector("#admin-dialog-zone"));
 }
 
-function ouvrirTenant(donnees) {
+function normaliserTelephoneRamassage(valeur) {
+  let telephone = String(valeur || "").replace(/\D/g, "");
+  if (telephone.length === 13 && telephone.startsWith("225")) telephone = telephone.slice(3);
+  return telephone;
+}
+
+async function ouvrirTenant(donnees) {
   document.querySelector("#admin-dialog-title").textContent = "Nouveau tenant";
-  document.querySelector("#admin-dialog-zone").innerHTML = `<form id="tenant-form"><div class="champ"><label>Nom de l'organisation</label><input name="nom" required></div><div class="champ"><label>Identifiant</label><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></div><div class="champ"><label>Type</label><select name="type"><option value="MARCHAND">Marchand</option><option value="RESTAURANT">Restaurant</option><option value="PRESSING">Pressing</option><option value="LOGISTIQUE">Logistique</option><option value="AUTRE">Autre</option></select></div><div class="champ"><label>Email du premier administrateur</label><input name="email" type="email" required></div><label class="case"><input name="creer_boutique" type="checkbox" checked> Creer egalement la boutique pour les activites marchandes</label><button class="btn btn-primaire btn-bloc" id="creer-tenant" style="margin-top:17px">${icone("building-2")} Creer et inviter</button></form>`;
+  const dialogue = document.querySelector("#admin-dialog");
+  const dialogueZone = document.querySelector("#admin-dialog-zone");
+  dialogueZone.innerHTML = `<div class="squelette squelette-ligne squelette-titre"></div><div class="squelette squelette-panneau" style="min-height:340px"></div>`;
+  dialogue.showModal();
+
+  const catalogueZones = await chargerZonesIkms(donnees.configuration || etat.configuration);
+  const optionsZones = (catalogueZones.zones || [])
+    .map((zone) => `<option value="${escapeHtml(zone.code)}">${escapeHtml(zone.nom || zone.code)}</option>`)
+    .join("");
+  const champZone = `<select name="zone_depart" required><option value="">${optionsZones ? "Choisir une zone IKMS" : "Aucune zone IKMS disponible"}</option>${optionsZones}</select>`;
+  const aideZone = catalogueZones.disponible
+    ? "Liste synchronisee avec le catalogue IKMS et gardee en cache pendant une heure."
+    : optionsZones
+      ? "Catalogue IKMS hors ligne : la derniere liste disponible est utilisee."
+      : "Configurez la cle du catalogue IKMS dans Administration > Livraisons avant de creer cette boutique.";
+
+  dialogueZone.innerHTML = `<form id="tenant-form">
+    <div class="champ"><label>Nom de l'organisation</label><input name="nom" required autocomplete="organization"></div>
+    <div class="champ"><label>Identifiant</label><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required><span class="champ-aide">Lettres minuscules, chiffres et tirets.</span></div>
+    <div class="champ"><label>Type</label><select name="type"><option value="MARCHAND">Marchand</option><option value="RESTAURANT">Restaurant</option><option value="PRESSING">Pressing</option><option value="LOGISTIQUE">Logistique</option><option value="AUTRE">Autre</option></select></div>
+    <div class="champ"><label>Email du premier administrateur</label><input name="email" type="email" required autocomplete="email"></div>
+    <label class="case"><input name="creer_boutique" type="checkbox" checked> Creer egalement la boutique pour les activites marchandes</label>
+    <fieldset id="ramassage-tenant" class="carte" style="margin-top:16px">
+      <legend class="legende">Ramassage habituel</legend>
+      <div class="champ"><label>Zone de ramassage</label>${champZone}<span class="champ-aide">${escapeHtml(aideZone)}</span></div>
+      <div class="grille-deux">
+        <div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" inputmode="tel" placeholder="0700000000" required autocomplete="tel"></div>
+        <div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" placeholder="Quartier, rue, repere" required autocomplete="street-address"></div>
+      </div>
+      <p class="muted petit" style="margin:0">Ces informations sont pre-enregistrees. Le marchand ajoutera ensuite sa propre cle API IKMS pour activer les transmissions.</p>
+    </fieldset>
+    <button class="btn btn-primaire btn-bloc" id="creer-tenant" style="margin-top:17px">${icone("building-2")} Creer et inviter</button>
+  </form>`;
   const nom = document.querySelector('#tenant-form [name="nom"]');
   const slug = document.querySelector('#tenant-form [name="slug"]');
+  const type = document.querySelector('#tenant-form [name="type"]');
+  const creerBoutique = document.querySelector('#tenant-form [name="creer_boutique"]');
+  const ramassage = document.querySelector("#ramassage-tenant");
   let modifie = false;
   slug.addEventListener("input", () => { modifie = true; });
   nom.addEventListener("input", () => { if (!modifie) slug.value = slugifier(nom.value); });
+  const synchroniserRamassage = () => {
+    const marchand = ["MARCHAND", "RESTAURANT"].includes(type.value);
+    if (!marchand) creerBoutique.checked = false;
+    creerBoutique.disabled = !marchand;
+    const actif = marchand && creerBoutique.checked;
+    ramassage.hidden = !actif;
+    ramassage.querySelectorAll("input, select").forEach((champ) => {
+      champ.disabled = !actif;
+      champ.required = actif;
+    });
+  };
+  type.addEventListener("change", synchroniserRamassage);
+  creerBoutique.addEventListener("change", synchroniserRamassage);
+  synchroniserRamassage();
   document.querySelector("#tenant-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const valeurs = Object.fromEntries(new FormData(form));
+    const avecBoutique = new FormData(form).has("creer_boutique");
+    const telephone = normaliserTelephoneRamassage(valeurs.expediteur_tel);
+    if (avecBoutique && telephone.length !== 10) {
+      toast("Le telephone de ramassage doit contenir 10 chiffres.", true);
+      return;
+    }
     const button = document.querySelector("#creer-tenant");
     boutonOccupe(button, true, "Creation...");
     const { data, error } = await supabase.rpc("rpc_admin_creer_tenant", {
@@ -180,18 +243,44 @@ function ouvrirTenant(donnees) {
       p_slug: valeurs.slug,
       p_type: valeurs.type,
       p_email_proprietaire: valeurs.email,
-      p_creer_boutique: new FormData(form).has("creer_boutique"),
+      p_creer_boutique: avecBoutique,
     });
+    if (error) {
+      boutonOccupe(button, false);
+      return gererErreur(error);
+    }
+
+    let ramassageInitialise = false;
+    if (avecBoutique && data?.boutique_id) {
+      boutonOccupe(button, true, "Ramassage...");
+      const resultatRamassage = await supabase.rpc("rpc_configurer_integration_ikms_boutique", {
+        p_boutique_id: data.boutique_id,
+        p_zone_depart: String(valeurs.zone_depart || "").trim().toUpperCase(),
+        p_expediteur_nom: String(valeurs.nom || "").trim(),
+        p_expediteur_tel: telephone,
+        p_expediteur_adresse: String(valeurs.expediteur_adresse || "").trim(),
+        p_mode_paiement: "A_LA_LIVRAISON",
+        p_api_key: null,
+        p_actif: false,
+      });
+      ramassageInitialise = !resultatRamassage.error;
+      if (resultatRamassage.error) {
+        console.error("Initialisation du ramassage IKMS impossible", resultatRamassage.error);
+      }
+    }
     boutonOccupe(button, false);
-    if (error) return gererErreur(error);
     const lien = `${location.origin}${location.pathname.replace(/marketplace\/admin\.html$/, "identity/index.html")}?invitation=${data.token}`;
     await navigator.clipboard.writeText(lien).catch(() => null);
-    document.querySelector("#admin-dialog").close();
-    document.querySelector("#tenant-resultat").innerHTML = `<div class="bande-info"><strong>Tenant cree</strong><p class="petit" style="word-break:break-all;margin:6px 0">${escapeHtml(lien)}</p><p class="petit" style="margin:0">Le lien d'inscription a ete copie. Envoie-le a ${escapeHtml(valeurs.email)}.</p></div>`;
-    toast("Tenant cree et lien copie");
+    dialogue.close();
+    const confirmationRamassage = avecBoutique
+      ? ramassageInitialise
+        ? `<p class="petit" style="margin:6px 0 0">Ramassage pre-enregistre : ${escapeHtml(String(valeurs.zone_depart || "").toUpperCase())}, ${escapeHtml(valeurs.expediteur_adresse)}.</p>`
+        : '<p class="petit" style="margin:6px 0 0;color:var(--danger)">Tenant cree, mais le ramassage doit etre complete dans l’espace marchand.</p>'
+      : "";
+    document.querySelector("#tenant-resultat").innerHTML = `<div class="bande-info"><strong>Tenant cree</strong><p class="petit" style="word-break:break-all;margin:6px 0">${escapeHtml(lien)}</p><p class="petit" style="margin:0">Le lien d'inscription a ete copie. Envoie-le a ${escapeHtml(valeurs.email)}.</p>${confirmationRamassage}</div>`;
+    toast(ramassageInitialise || !avecBoutique ? "Tenant cree et lien copie" : "Tenant cree, ramassage a verifier", avecBoutique && !ramassageInitialise);
   });
-  rafraichirIcones(document.querySelector("#admin-dialog"));
-  document.querySelector("#admin-dialog").showModal();
+  rafraichirIcones(dialogue);
 }
 
 function afficherBoutiques(donnees) {

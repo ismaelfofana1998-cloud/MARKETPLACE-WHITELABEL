@@ -13,7 +13,7 @@ import {
   supabase,
   tonaliteStatut,
   toast,
-} from "../assets/api.js?v=15";
+} from "../assets/api.js?v=16";
 
 export const app = document.querySelector("#market-app");
 export const etat = {
@@ -22,6 +22,125 @@ export const etat = {
   panier: 0,
   vitrine: null,
 };
+
+let experienceInstallee = false;
+let observateurApparition = null;
+
+export function squelettePage(variante = "contenu") {
+  if (variante === "catalogue") {
+    return `<main class="squelette-page" aria-busy="true" aria-label="Chargement du catalogue">
+      <div class="squelette-hero squelette"></div>
+      <div class="conteneur">
+        <div class="squelette-services">${Array.from({ length: 3 }, () => '<div class="squelette squelette-service"></div>').join("")}</div>
+        <div class="squelette-ligne squelette squelette-titre"></div>
+        <div class="squelette-categories">${Array.from({ length: 6 }, () => '<div class="squelette squelette-categorie"></div>').join("")}</div>
+        <div class="squelette-produits">${Array.from({ length: 8 }, () => '<div class="squelette squelette-produit"></div>').join("")}</div>
+      </div>
+    </main>`;
+  }
+  if (variante === "detail") {
+    return `<main class="conteneur squelette-page" aria-busy="true" aria-label="Chargement du produit">
+      <div class="squelette-detail">
+        <div class="squelette squelette-detail-image"></div>
+        <div class="squelette-detail-texte">
+          <div class="squelette squelette-ligne squelette-courte"></div>
+          <div class="squelette squelette-ligne squelette-titre"></div>
+          <div class="squelette squelette-ligne"></div>
+          <div class="squelette squelette-ligne squelette-moyenne"></div>
+          <div class="squelette squelette-action"></div>
+        </div>
+      </div>
+    </main>`;
+  }
+  return `<main class="conteneur squelette-page" aria-busy="true" aria-label="Chargement de la page">
+    <div class="squelette squelette-ligne squelette-titre"></div>
+    <div class="squelette squelette-ligne squelette-courte"></div>
+    <div class="squelette-contenu">
+      <div class="squelette squelette-panneau"></div>
+      <div class="squelette squelette-panneau"></div>
+    </div>
+  </main>`;
+}
+
+function preparerImages(racine = app) {
+  racine.querySelectorAll("img:not([data-image-preparee])").forEach((image) => {
+    image.dataset.imagePreparee = "1";
+    const terminer = () => image.classList.add("image-chargee");
+    if (image.complete) terminer();
+    else {
+      image.classList.add("image-en-chargement");
+      image.addEventListener("load", terminer, { once: true });
+      image.addEventListener("error", terminer, { once: true });
+    }
+  });
+}
+
+function preparerApparitions(racine = app) {
+  const mouvementReduit = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const elements = racine.querySelectorAll(".section, .categories-market, .ecosysteme-market, .produit, .boutique-carte, .carte:not(.resume-sticky)");
+  elements.forEach((element) => {
+    if (element.dataset.apparitionPreparee) return;
+    element.dataset.apparitionPreparee = "1";
+    if (mouvementReduit || !observateurApparition) {
+      element.classList.add("apparition-visible");
+      return;
+    }
+    element.classList.add("apparition");
+    observateurApparition.observe(element);
+  });
+}
+
+export function rafraichirExperience(racine = app) {
+  preparerImages(racine);
+  preparerApparitions(racine);
+}
+
+function installerExperienceGlobale() {
+  if (experienceInstallee) return;
+  experienceInstallee = true;
+
+  if ("IntersectionObserver" in window) {
+    observateurApparition = new IntersectionObserver((entrees, observateur) => {
+      entrees.forEach((entree) => {
+        if (!entree.isIntersecting) return;
+        entree.target.classList.add("apparition-visible");
+        observateur.unobserve(entree.target);
+      });
+    }, { rootMargin: "0px 0px -7% 0px", threshold: 0.06 });
+  }
+
+  let miseAJourPlanifiee = false;
+  const planifier = () => {
+    if (miseAJourPlanifiee) return;
+    miseAJourPlanifiee = true;
+    requestAnimationFrame(() => {
+      miseAJourPlanifiee = false;
+      rafraichirExperience(app);
+    });
+  };
+  new MutationObserver(planifier).observe(app, { childList: true, subtree: true });
+
+  const synchroniserBandeau = () => {
+    document.querySelector(".bandeau")?.classList.toggle("bandeau-defile", window.scrollY > 12);
+  };
+  window.addEventListener("scroll", synchroniserBandeau, { passive: true });
+  synchroniserBandeau();
+
+  document.addEventListener("click", (event) => {
+    const lien = event.target.closest("a[href]");
+    if (!lien || event.defaultPrevented || lien.target === "_blank" || lien.hasAttribute("download")) return;
+    try {
+      const cible = new URL(lien.href, location.href);
+      const memePage = cible.pathname === location.pathname && cible.search === location.search;
+      if (cible.origin === location.origin && !(memePage && cible.hash)) {
+        document.documentElement.classList.add("navigation-en-cours");
+      }
+    } catch {
+      // Lien non navigable.
+    }
+  });
+  window.addEventListener("pageshow", () => document.documentElement.classList.remove("navigation-en-cours"));
+}
 
 export async function initialiser() {
   etat.vitrine = await resoudreVitrine();
@@ -112,7 +231,7 @@ export const estSiteDedie = () => Boolean(etat.vitrine?.boutique?.id);
 export const boutiqueContexteId = () => etat.vitrine?.boutique?.id || null;
 
 export function ecranConfiguration() {
-  app.innerHTML = `<main class="conteneur conteneur-etroit">
+  app.innerHTML = `<main class="conteneur conteneur-etroit page-visible">
     <div class="vide" style="margin-top:60px">
       ${icone("settings")}
       <h1>Connexion Supabase a terminer</h1>
@@ -142,6 +261,7 @@ export function coquille(contenu, options = {}) {
     mode = "boutique",
     espace = "",
     navigation = "",
+    actions = null,
   } = options;
   const configuration = etat.configuration;
   const logo = configuration.logo_url
@@ -157,6 +277,9 @@ export function coquille(contenu, options = {}) {
     ? `<div class="annonce-site-dedie">${escapeHtml(configuration.annonce)}</div>`
     : "";
   const marque = `<a class="marque" href="./index.html">${logo}<span style="color:white">${escapeHtml(nomApplication.split(" ")[0] || "IKIGAI")}</span><span>${escapeHtml(nomApplication.split(" ").slice(1).join(" ") || "Market")}</span></a>`;
+  const actionsGestion = actions !== null
+    ? actions
+    : `<div class="bandeau-actions"><a class="icone-btn" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-bag")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}</a><a class="icone-btn" href="${compteLien}" title="Compte" aria-label="Compte">${icone(etat.session ? "circle-user-round" : "log-in")}</a></div>`;
   const entete = mode === "boutique"
     ? `<div class="bandeau-ligne bandeau-commerce">
         ${marque}
@@ -172,8 +295,8 @@ export function coquille(contenu, options = {}) {
           <a class="icone-btn panier-entete" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-cart")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}<strong>Panier</strong></a>
         </div>
       </div>
-      <div class="sous-navigation"><nav><a href="./index.html#categories">${icone("menu")} Categories</a><a href="./index.html#produits">Nouveautes</a>${masquerAutresBoutiques ? "" : '<a href="./index.html#boutiques">Boutiques</a><a href="./marchand.html">Vendre sur IKIGAI</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
-    : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}<div class="bandeau-actions"><a class="icone-btn" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-bag")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}</a><a class="icone-btn" href="${compteLien}" title="Compte" aria-label="Compte">${icone(etat.session ? "circle-user-round" : "log-in")}</a></div></div>`;
+      <div class="sous-navigation"><nav><a href="./index.html#categories">${icone("menu")} Categories</a><a href="./index.html#produits">Nouveautes</a>${masquerAutresBoutiques ? "" : '<a href="./index.html#boutiques">Boutiques</a><a href="./vendre.html">Vendre sur IKIGAI</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
+    : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}${actionsGestion}</div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">
         <a href="./index.html" data-nav-mobile="accueil">${icone("house")}<span>Accueil</span></a>
@@ -191,6 +314,11 @@ export function coquille(contenu, options = {}) {
     ${contenu}
     ${mobile}
   </div>`;
+  installerExperienceGlobale();
+  requestAnimationFrame(() => {
+    document.querySelector("main")?.classList.add("page-visible");
+    rafraichirExperience(app);
+  });
   rafraichirIcones(app);
   if (mode === "boutique") {
     brancherRechercheEntete();
