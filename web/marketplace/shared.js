@@ -13,7 +13,7 @@ import {
   supabase,
   tonaliteStatut,
   toast,
-} from "../assets/api.js?v=16";
+} from "../assets/api.js?v=17";
 
 export const app = document.querySelector("#market-app");
 export const etat = {
@@ -295,12 +295,12 @@ export function coquille(contenu, options = {}) {
           <a class="icone-btn panier-entete" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-cart")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}<strong>Panier</strong></a>
         </div>
       </div>
-      <div class="sous-navigation"><nav><a href="./index.html#categories">${icone("menu")} Categories</a><a href="./index.html#produits">Nouveautes</a>${masquerAutresBoutiques ? "" : '<a href="./index.html#boutiques">Boutiques</a><a href="./vendre.html">Vendre sur IKIGAI</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
+      <div class="sous-navigation"><nav><a href="./index.html#produits">${icone("shopping-bag")} Produits</a>${masquerAutresBoutiques ? "" : '<a href="./index.html#boutiques">Boutiques</a><a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
     : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}${actionsGestion}</div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">
         <a href="./index.html" data-nav-mobile="accueil">${icone("house")}<span>Accueil</span></a>
-        <a href="./index.html#categories" data-nav-mobile="categories">${icone("layout-grid")}<span>Categories</span></a>
+        <a href="./index.html#produits" data-nav-mobile="produits">${icone("layout-grid")}<span>Produits</span></a>
         <a href="./panier.html" data-nav-mobile="panier">${icone("shopping-bag")}<span>Panier</span></a>
         <a href="${compteLien}" data-nav-mobile="compte">${icone("user-round")}<span>Compte</span></a>
       </nav>`
@@ -327,7 +327,7 @@ export function coquille(contenu, options = {}) {
 }
 
 function synchroniserNavigationMobile(actif) {
-  const section = actif === "accueil" && location.hash === "#categories" ? "categories" : actif;
+  const section = actif === "accueil" && location.hash === "#produits" ? "produits" : actif;
   document.querySelectorAll("[data-nav-mobile]").forEach((lien) => {
     lien.classList.toggle("actif", lien.dataset.navMobile === section);
   });
@@ -359,7 +359,7 @@ function brancherRechercheEntete() {
       if (numero !== requeteCourante || error) return fermer();
       suggestions.innerHTML = data?.length
         ? data.map((produit) => `<a href="./produit.html?id=${produit.id}" role="option"><img src="${escapeHtml(imageProduit(produit))}" alt=""><span><strong>${escapeHtml(produit.nom)}</strong><small>${escapeHtml(produit.boutique_nom)} - ${fcfa(produit.prix)}</small></span></a>`).join("")
-        : `<a href="./index.html?q=${encodeURIComponent(recherche)}"><span><strong>Aucun produit exact</strong><small>Voir tous les resultats proches</small></span></a>`;
+        : `<a href="./index.html?q=${encodeURIComponent(recherche)}"><span><strong>Aucun produit exact</strong><small>Voir tous les résultats proches</small></span></a>`;
       suggestions.classList.remove("masque");
     }, 260);
   });
@@ -514,7 +514,7 @@ export function carteProduit(produit, favoris = new Set()) {
   return `<article class="produit" data-produit="${produit.id}">
     <button class="favori ${favoris.has(produit.id) ? "actif" : ""}" data-favori="${produit.id}" title="Favori" aria-label="Ajouter aux favoris">${icone("heart")}</button>
     ${reduction ? `<span class="remise-produit">-${reduction}%</span>` : ""}
-    ${produit.stock <= 0 ? '<span class="badge badge-danger stock-epuise">Epuise</span>' : ""}
+    ${produit.stock <= 0 ? '<span class="badge badge-danger stock-epuise">Épuisé</span>' : ""}
     <a class="produit-visuel" href="./produit.html?id=${produit.id}">
       <img class="produit-image" src="${escapeHtml(produit.image)}" alt="${escapeHtml(produit.nom)}" loading="lazy">
     </a>

@@ -645,12 +645,12 @@ html.navigation-en-cours::before {
   to { transform: translateX(122%); }
 }
 
-main {
+#market-app main {
   opacity: .01;
   transform: translateY(5px);
   transition: opacity .28s ease, transform .38s cubic-bezier(.2, .7, .2, 1);
 }
-main.page-visible {
+#market-app main.page-visible {
   opacity: 1;
   transform: none;
 }
@@ -980,6 +980,153 @@ main.page-visible {
     transition-duration: .01ms !important;
   }
   .apparition { opacity: 1; transform: none; }
+}
+
+/* Accueil produit d'abord : bandeau compact et filtres dans un tiroir latéral. */
+.navigation-vendre {
+  min-height: 30px;
+  padding: 0 13px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--encre) !important;
+  display: inline-flex !important;
+  align-items: center;
+  font-weight: 900 !important;
+}
+.promo-market {
+  min-height: clamp(235px, 24vw, 330px);
+}
+.promo-market-contenu {
+  padding: 24px max(20px, calc((100vw - 1380px) / 2));
+}
+.promo-market-carte {
+  width: min(540px, 100%);
+  padding: clamp(19px, 2.2vw, 29px);
+  border-radius: 18px;
+}
+.promo-sur-titre { margin-bottom: 8px !important; }
+.promo-market h1 {
+  margin-bottom: 8px;
+  font-size: clamp(31px, 3.6vw, 48px);
+}
+.promo-market-carte > p:not(.promo-sur-titre) {
+  margin-bottom: 15px;
+  font-size: clamp(13px, 1.2vw, 15px);
+  line-height: 1.48;
+}
+.promo-market .promo-actions a {
+  min-height: 42px;
+  padding: 0 15px;
+}
+.promo-commandes { bottom: 14px; }
+.catalogue-layout {
+  display: block;
+  padding: 20px 0 34px;
+  scroll-margin-top: 122px;
+}
+.resultats-entete { margin-bottom: 14px; }
+.outils-resultats .ouvrir-filtres,
+.filtres-entete .fermer-filtres {
+  display: inline-flex;
+}
+.filtres-catalogue {
+  position: fixed;
+  z-index: 91;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(390px, 92vw);
+  max-height: none;
+  padding: calc(18px + env(safe-area-inset-top)) 20px 28px;
+  overflow-y: auto;
+  border: 0;
+  border-right: 1px solid var(--ligne);
+  background: white;
+  box-shadow: 18px 0 55px rgba(12,20,18,.24);
+  transform: translateX(-105%);
+  transition: transform .22s cubic-bezier(.2,.7,.2,1);
+}
+.filtres-catalogue.ouvert { transform: translateX(0); }
+.fond-filtres {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  background: rgba(8,19,16,.52);
+  backdrop-filter: blur(2px);
+}
+.fond-filtres.visible { display: block; }
+.menu-categories {
+  margin: 10px 0 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--ligne);
+  display: grid;
+  gap: 5px;
+}
+.menu-categories button {
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--encre);
+  display: flex;
+  align-items: center;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+}
+.menu-categories button:hover {
+  background: var(--fond);
+  border-color: var(--ligne);
+}
+.menu-categories button.actif {
+  background: color-mix(in srgb, var(--primaire) 11%, white);
+  border-color: color-mix(in srgb, var(--primaire) 28%, white);
+  color: var(--primaire);
+}
+.resultats-catalogue .grille-produits {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 13px;
+}
+body.filtres-ouverts { overflow: hidden; }
+
+@media (max-width: 1180px) {
+  .resultats-catalogue .grille-produits { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .resultats-catalogue .grille-produits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 819px) {
+  .promo-market {
+    min-height: 220px;
+    align-items: center;
+  }
+  .promo-market-contenu { padding: 20px 15px; }
+  .promo-market-carte {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  .promo-market h1 { font-size: clamp(29px, 8vw, 39px); }
+  .promo-market-carte > p:not(.promo-sur-titre) { font-size: 13px; }
+  .resultats-entete { display: block; }
+  .outils-resultats {
+    margin-top: 12px;
+    justify-content: space-between;
+  }
+  .outils-resultats label { display: none; }
+  .outils-resultats select { min-width: 0; flex: 1; }
+}
+@media (max-width: 620px) {
+  .promo-market { min-height: 205px; }
+  .promo-market .promo-actions a { width: auto; }
+  .promo-sur-titre { font-size: 8px !important; }
+  .promo-market h1 { font-size: 29px; }
+  .resultats-catalogue .grille-produits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
 }
 /* Page d'acquisition des futurs tenants. */
 .sr-only {

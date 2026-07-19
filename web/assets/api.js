@@ -31,8 +31,8 @@ export const IMAGE_PRODUIT_DEFAUT =
 export const configurationDefaut = {
   id: 1,
   nom: "IKIGAI Market",
-  slogan: "Les boutiques d'ici, livrees par IKIGAI.",
-  description: "Achetez aupres de commerces locaux et suivez chaque livraison.",
+  slogan: "Les boutiques d'ici, livrées par IKIGAI.",
+  description: "Achetez auprès de commerces locaux et suivez chaque livraison.",
   logo_url: null,
   hero_image_url: IMAGE_PRODUIT_DEFAUT,
   hero_images: null,
@@ -146,22 +146,22 @@ export const imageProduit = (produit) =>
 
 export const libellesStatut = {
   NOUVELLE: "Nouvelle",
-  CONFIRMEE: "Confirmee",
-  EN_PREPARATION: "En preparation",
-  PRETE: "Prete",
+  CONFIRMEE: "Confirmée",
+  EN_PREPARATION: "En préparation",
+  PRETE: "Prête",
   EN_LIVRAISON: "En livraison",
-  LIVREE: "Livree",
-  ANNULEE: "Annulee",
+  LIVREE: "Livrée",
+  ANNULEE: "Annulée",
   BROUILLON: "Brouillon",
-  PUBLIEE: "Publiee",
+  PUBLIEE: "Publiée",
   SUSPENDUE: "Suspendue",
   ACTIF: "Actif",
-  EPUISE: "Epuise",
+  EPUISE: "Épuisé",
   ARCHIVE: "Archive",
-  A_ENVOYER: "A envoyer",
+  A_ENVOYER: "À envoyer",
   ENVOI_EN_COURS: "Transmission en cours",
-  ENVOYEE: "Envoyee",
-  ACCEPTEE: "Acceptee",
+  ENVOYEE: "Envoyée",
+  ACCEPTEE: "Acceptée",
   EN_COURS: "En cours",
   RETOUR: "Retour en cours",
   ERREUR: "Erreur",
@@ -205,12 +205,12 @@ export function messageErreur(error, fallback = "Une erreur est survenue.") {
   const traductions = [
     [/Invalid login credentials/i, "Email ou mot de passe incorrect."],
     [/Email not confirmed/i, "Confirme ton adresse email avant de te connecter."],
-    [/User already registered/i, "Un compte existe deja avec cet email."],
-    [/Password should be at least/i, "Le mot de passe doit contenir au moins 8 caracteres."],
-    [/duplicate key.*slug/i, "Cet identifiant est deja utilise."],
-    [/Failed to fetch/i, "Connexion au service impossible. Verifie ta connexion internet."],
-    [/IKMS HTTP 401/i, "IKMS refuse la connexion. Verifie l'URL de base (/functions/v1/api-v1, pas /rest/v1) et la cle API client pro."],
-    [/non-2xx status code/i, "Le service distant a refuse l'action. Ouvre les missions IKMS pour voir l'erreur exacte."],
+    [/User already registered/i, "Un compte existe déjà avec cet email."],
+    [/Password should be at least/i, "Le mot de passe doit contenir au moins 8 caractères."],
+    [/duplicate key.*slug/i, "Cet identifiant est déjà utilisé."],
+    [/Failed to fetch/i, "Connexion au service impossible. Vérifie ta connexion internet."],
+    [/IKMS HTTP 401/i, "IKMS refuse la connexion. Vérifie l'URL de base (/functions/v1/api-v1, pas /rest/v1) et la clé API client pro."],
+    [/non-2xx status code/i, "Le service distant a refusé l'action. Ouvre les missions IKMS pour voir l'erreur exacte."],
   ];
   return traductions.find(([pattern]) => pattern.test(message))?.[1] || message;
 }
@@ -243,8 +243,8 @@ export async function chargerSession() {
 
 export async function televerserImage(file, dossier) {
   if (!file || !supabase) return null;
-  if (!file.type.startsWith("image/")) throw new Error("Le fichier doit etre une image.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("L'image ne doit pas depasser 5 Mo.");
+  if (!file.type.startsWith("image/")) throw new Error("Le fichier doit être une image.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("L'image ne doit pas dépasser 5 Mo.");
   const extension = file.name.split(".").pop()?.toLowerCase() || "webp";
   const nom = `${dossier}/${crypto.randomUUID()}.${extension}`;
   const { error } = await supabase.storage.from("marketplace").upload(nom, file, {

@@ -1,10 +1,10 @@
-import { messageErreur, rafraichirIcones } from "../assets/api.js?v=16";
-import { rendreAcquisition } from "./acquisition.js?v=16";
-import { rendreAdmin } from "./admin.js?v=16";
-import { rendreCompte } from "./account.js?v=16";
-import { rendreMarchand } from "./merchant.js?v=16";
-import { initialiser, verifierConfiguration, app, vide } from "./shared.js?v=16";
-import { rendreAccueil, rendreCheckout, rendrePanier, rendreProduit } from "./storefront.js?v=16";
+import { messageErreur, rafraichirIcones } from "../assets/api.js?v=17";
+import { rendreAcquisition } from "./acquisition.js?v=17";
+import { rendreAdmin } from "./admin.js?v=17";
+import { rendreCompte } from "./account.js?v=17";
+import { rendreMarchand } from "./merchant.js?v=17";
+import { initialiser, verifierConfiguration, app, vide } from "./shared.js?v=17";
+import { rendreAccueil, rendreCheckout, rendrePanier, rendreProduit } from "./storefront.js?v=17";
 
 const pages = {
   accueil: rendreAccueil,
