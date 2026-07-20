@@ -542,6 +542,8 @@ export function carteProduit(produit, favoris = new Set()) {
 
 export function brancherAjoutsPanier(racine) {
   racine.querySelectorAll("[data-ajouter-panier]").forEach((button) => {
+    if (button.dataset.panierBranche === "1") return;
+    button.dataset.panierBranche = "1";
     button.addEventListener("click", async () => {
       if (!etat.session) return demanderConnexion();
       const varianteId = button.dataset.ajouterPanier;
@@ -571,6 +573,8 @@ export async function chargerFavoris() {
 
 export function brancherFavoris(racine, favoris) {
   racine.querySelectorAll("[data-favori]").forEach((button) => {
+    if (button.dataset.favoriBranche === "1") return;
+    button.dataset.favoriBranche = "1";
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();

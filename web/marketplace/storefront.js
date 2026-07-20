@@ -30,7 +30,7 @@ import {
   rafraichirExperience,
   squelettePage,
   vide,
-} from "./shared.js?v=20";
+} from "./shared.js?v=21";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -62,7 +62,7 @@ export async function rendreAccueil() {
       enStock: params.get("stock") === "1",
       tri: ["PERTINENCE", "NOUVEAUTES", "PRIX_ASC", "PRIX_DESC", "NOTE"].includes(params.get("tri")) ? params.get("tri") : "PERTINENCE",
       page: Math.max(1, Math.min(1000, Number(params.get("page")) || 1)),
-      parPage: 24,
+      parPage: 30,
     };
   };
   let filtres = lireFiltres();
@@ -116,7 +116,7 @@ export async function rendreAccueil() {
             <div class="resultats-entete"><div><p class="sur-titre" id="contexte-resultats">Catalogue ${escapeHtml(etat.configuration.nom)}</p><h2 id="titre-resultats">Tous les produits</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div><div class="outils-resultats"><button class="btn btn-secondaire ouvrir-filtres" type="button">${icone("panel-left-open")} Catégories et filtres</button>${filtresDisponibles.tri === false ? "" : '<label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautés</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix décroissant</option><option value="NOTE">Mieux notés</option></select>'}</div></div>
             <div class="filtres-actifs" id="filtres-actifs"></div>
             <div class="grille-produits grille-squelettes-produits" id="grille-produits" aria-busy="true">${Array.from({ length: 8 }, () => '<div class="squelette squelette-produit"></div>').join("")}</div>
-            <nav class="pagination" id="pagination" aria-label="Pagination du catalogue"></nav>
+            <div class="chargement-continu" id="chargement-continu" aria-live="polite"></div>
           </section>
         </section>
         ${siteDedie && etat.configuration.masquer_autres_boutiques !== false ? "" : `<section class="section" id="boutiques"><div class="entete-page"><div><h2>Boutiques à découvrir</h2><p class="muted petit">Achetez directement auprès de marchands partenaires</p></div></div><div class="grille-boutiques">${boutiques.slice(0, 9).map((boutique) => `<a class="carte carte-lien boutique-carte" href="./index.html?boutique=${boutique.id}#produits"><img class="boutique-logo" src="${escapeHtml(boutique.logo_url || etat.configuration.hero_image_url)}" alt=""><div><h3>${escapeHtml(boutique.nom)}</h3><p class="muted petit">${escapeHtml(boutique.description || "Boutique partenaire IKIGAI Market")}</p>${boutique.note_moyenne ? `<span class="note">${icone("star")} ${Number(boutique.note_moyenne).toFixed(1)}</span>` : ""}</div></a>`).join("") || vide("store", "Aucune boutique publiée", "La première boutique apparaîtra ici dès sa publication.")}</div></section>`}
@@ -175,6 +175,11 @@ export async function rendreAccueil() {
     const form = document.querySelector("#filtres-form");
     const grille = document.querySelector("#grille-produits");
     let derniereRequeteCatalogue = 0;
+    let chargementSuivant = false;
+    let observateurChargement = null;
+    let totalPages = 1;
+    let totalProduits = 0;
+    let nombreProduitsAffiches = 0;
     const synchroniserFormulaire = () => {
       form.elements.categorie.value = filtres.categorieId;
       if (form.elements.boutique) form.elements.boutique.value = filtres.boutiqueId;
@@ -211,6 +216,49 @@ export async function rendreAccueil() {
     const recentrerCatalogue = () => {
       document.querySelector(".resultats-catalogue").scrollIntoView({ behavior: "auto", block: "start" });
     };
+    const estAccueilEditorial = () => !siteDedie
+      && !filtres.recherche
+      && !filtres.categorieId
+      && !filtres.boutiqueId
+      && filtres.prixMin === null
+      && filtres.prixMax === null
+      && filtres.noteMin === null
+      && !filtres.enStock
+      && filtres.tri === "PERTINENCE";
+    const spotMiseEnAvant = (produit) => {
+      const reduction = produit.prix_barre > produit.prix
+        ? Math.round((1 - produit.prix / produit.prix_barre) * 100)
+        : 0;
+      return `<article class="spot-produit" aria-label="Produit mis en avant">
+        <img src="${escapeHtml(produit.image)}" alt="" loading="lazy">
+        <div class="spot-produit-voile"></div>
+        <div class="spot-produit-contenu">
+          <span class="spot-produit-label">Mise en avant</span>
+          <p>${escapeHtml(produit.boutique?.nom || "Boutique partenaire")}</p>
+          <h3>${escapeHtml(produit.nom)}</h3>
+          <div class="spot-produit-prix"><strong>${fcfa(produit.prix)}</strong>${reduction ? `<span>-${reduction}%</span>` : ""}</div>
+          <a href="./produit.html?id=${produit.id}">Découvrir ${icone("arrow-right")}</a>
+        </div>
+      </article>`;
+    };
+    const rendreLotProduits = (produits, indexDepart = 0) => {
+      let contenu = "";
+      produits.forEach((produit, index) => {
+        contenu += carteProduit(produit, favoris);
+        const positionGlobale = indexDepart + index + 1;
+        if (estAccueilEditorial() && positionGlobale % 10 === 0) {
+          const debutGroupe = Math.max(0, index - 9);
+          const candidats = produits.slice(debutGroupe, index + 1);
+          const produitMisEnAvant = candidats.sort((a, b) => {
+            const reductionA = a.prix_barre > a.prix ? 1 - a.prix / a.prix_barre : 0;
+            const reductionB = b.prix_barre > b.prix ? 1 - b.prix / b.prix_barre : 0;
+            return reductionB - reductionA;
+          })[0] || produit;
+          contenu += spotMiseEnAvant(produitMisEnAvant);
+        }
+      });
+      return contenu;
+    };
     const afficherFiltresActifs = () => {
       const actifs = [];
       const categorie = categories.find((element) => element.id === filtres.categorieId);
@@ -240,30 +288,65 @@ export async function rendreAccueil() {
       }));
       rafraichirIcones(document.querySelector("#filtres-actifs"));
     };
-    const afficherCatalogue = async () => {
+    const chargerPageSuivante = async () => {
+      if (chargementSuivant || filtres.page >= totalPages) return;
+      chargementSuivant = true;
+      observateurChargement?.disconnect();
+      const pagePrecedente = filtres.page;
+      const bouton = document.querySelector("#charger-plus-produits");
+      boutonOccupe(bouton, true, "Chargement...");
+      filtres.page += 1;
+      try {
+        const chargee = await afficherCatalogue({ ajouter: true });
+        if (!chargee) filtres.page = pagePrecedente;
+      } finally {
+        chargementSuivant = false;
+        if (bouton?.isConnected) boutonOccupe(bouton, false);
+        afficherChargementContinu();
+      }
+    };
+    const afficherChargementContinu = () => {
+      const zone = document.querySelector("#chargement-continu");
+      observateurChargement?.disconnect();
+      if (!totalProduits || nombreProduitsAffiches >= totalProduits || filtres.page >= totalPages) {
+        zone.innerHTML = totalProduits ? `<p class="fin-catalogue">Vous avez vu les ${totalProduits} produits.</p>` : "";
+        return;
+      }
+      zone.innerHTML = `<button class="btn btn-secondaire" type="button" id="charger-plus-produits">${icone("plus")} Afficher plus de produits</button><span>${nombreProduitsAffiches} sur ${totalProduits}</span><div class="sentinelle-catalogue" id="sentinelle-catalogue" aria-hidden="true"></div>`;
+      zone.querySelector("#charger-plus-produits").addEventListener("click", chargerPageSuivante);
+      if ("IntersectionObserver" in window) {
+        observateurChargement = new IntersectionObserver((entrees) => {
+          if (entrees.some((entree) => entree.isIntersecting)) chargerPageSuivante();
+        }, { rootMargin: "500px 0px" });
+        observateurChargement.observe(zone.querySelector("#sentinelle-catalogue"));
+      }
+      rafraichirIcones(zone);
+    };
+    const afficherCatalogue = async ({ ajouter = false } = {}) => {
       const requeteCatalogue = ++derniereRequeteCatalogue;
-      grille.classList.add("chargement");
+      if (!ajouter) grille.classList.add("chargement");
       grille.setAttribute("aria-busy", "true");
       try {
         const resultat = await chargerProduits(filtres);
-        if (requeteCatalogue !== derniereRequeteCatalogue) return;
+        if (requeteCatalogue !== derniereRequeteCatalogue) return false;
         grille.classList.remove("grille-squelettes-produits");
-        grille.innerHTML = resultat.produits.length
-          ? resultat.produits.map((produit) => carteProduit(produit, favoris)).join("")
-          : vide("search-x", "Aucun produit trouvé", "Essaie une autre recherche ou retire certains filtres.", '<button class="btn btn-secondaire" id="reinitialiser-catalogue">Tout afficher</button>');
+        if (ajouter) {
+          grille.insertAdjacentHTML("beforeend", rendreLotProduits(resultat.produits, nombreProduitsAffiches));
+          nombreProduitsAffiches += resultat.produits.length;
+        } else {
+          nombreProduitsAffiches = resultat.produits.length;
+          grille.innerHTML = resultat.produits.length
+            ? rendreLotProduits(resultat.produits)
+            : vide("search-x", "Aucun produit trouvé", "Essaie une autre recherche ou retire certains filtres.", '<button class="btn btn-secondaire" id="reinitialiser-catalogue">Tout afficher</button>');
+        }
         document.querySelector("#resultat-compte").textContent = `${resultat.total} résultat${resultat.total > 1 ? "s" : ""}`;
         document.querySelector("#contexte-resultats").textContent = filtres.recherche ? `Résultats pour "${filtres.recherche}"` : `Catalogue ${etat.configuration.nom}`;
         document.querySelector("#titre-resultats").textContent = categories.find((element) => element.id === filtres.categorieId)?.nom || boutiques.find((element) => element.id === filtres.boutiqueId)?.nom || "Produits disponibles";
-        const pages = Math.max(1, Math.ceil(resultat.total / resultat.parPage));
-        document.querySelector("#pagination").innerHTML = pages > 1 ? `<button ${filtres.page <= 1 ? "disabled" : ""} data-page="${filtres.page - 1}">${icone("chevron-left")} Précédent</button><span>Page ${filtres.page} sur ${pages}</span><button ${filtres.page >= pages ? "disabled" : ""} data-page="${filtres.page + 1}">Suivant ${icone("chevron-right")}</button>` : "";
-        document.querySelectorAll("#pagination [data-page]").forEach((button) => button.addEventListener("click", async (event) => {
-          filtres.page = Number(event.currentTarget.dataset.page);
-          mettreAJourUrl();
-          await afficherCatalogue();
-          recentrerCatalogue();
-        }));
+        totalProduits = resultat.total;
+        totalPages = Math.max(1, Math.ceil(resultat.total / resultat.parPage));
+        afficherChargementContinu();
         document.querySelector("#reinitialiser-catalogue")?.addEventListener("click", async () => {
-          filtres = { recherche: "", categorieId: "", boutiqueId: "", prixMin: null, prixMax: null, noteMin: null, enStock: false, tri: "PERTINENCE", page: 1, parPage: 24 };
+          filtres = { recherche: "", categorieId: "", boutiqueId: "", prixMin: null, prixMax: null, noteMin: null, enStock: false, tri: "PERTINENCE", page: 1, parPage: 30 };
           synchroniserFormulaire();
           mettreAJourUrl();
           await afficherCatalogue();
@@ -274,9 +357,15 @@ export async function rendreAccueil() {
         rafraichirExperience(grille);
         afficherFiltresActifs();
         rafraichirIcones(grille.parentElement);
+        return true;
       } catch (error) {
-        if (requeteCatalogue !== derniereRequeteCatalogue) return;
-        grille.innerHTML = vide("wifi-off", "Catalogue indisponible", messageErreur(error));
+        if (requeteCatalogue !== derniereRequeteCatalogue) return false;
+        if (ajouter) {
+          toast(messageErreur(error), true);
+        } else {
+          grille.innerHTML = vide("wifi-off", "Catalogue indisponible", messageErreur(error));
+        }
+        return false;
       } finally {
         if (requeteCatalogue === derniereRequeteCatalogue) {
           grille.classList.remove("chargement");
