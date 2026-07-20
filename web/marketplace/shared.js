@@ -295,7 +295,7 @@ export function coquille(contenu, options = {}) {
           <a class="icone-btn panier-entete" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-cart")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}<strong>Panier</strong></a>
         </div>
       </div>
-      <div class="sous-navigation"><nav><a href="./index.html#produits">${icone("shopping-bag")} Produits</a>${masquerAutresBoutiques ? "" : '<a href="./index.html#boutiques">Boutiques</a><a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
+      <div class="sous-navigation"><nav>${masquerAutresBoutiques ? "" : '<a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
     : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}${actionsGestion}</div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">

@@ -26,7 +26,7 @@ import {
   gererErreur,
   squelettePage,
   vide,
-} from "./shared.js?v=18";
+} from "./shared.js?v=20";
 
 async function verifierAdmin() {
   const { data, error } = await supabase

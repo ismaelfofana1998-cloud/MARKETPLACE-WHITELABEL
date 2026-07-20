@@ -30,7 +30,7 @@ import {
   rafraichirExperience,
   squelettePage,
   vide,
-} from "./shared.js?v=18";
+} from "./shared.js?v=20";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -90,7 +90,10 @@ export async function rendreAccueil() {
     main.className = "page-visible";
     main.removeAttribute("aria-busy");
     main.removeAttribute("aria-label");
-    main.innerHTML = `<section class="promo-market ${modeBandeau}" aria-label="Bandeau principal">${imagesBandeau.length ? `<div class="promo-market-slides">${imagesBandeau.map((url, index) => `<div class="promo-market-slide ${index === 0 ? "actif" : ""}" aria-hidden="${index === 0 ? "false" : "true"}"><img src="${escapeHtml(url)}" alt=""></div>`).join("")}</div>` : ""}<div class="promo-market-contenu"><div class="promo-market-carte"><p class="promo-sur-titre">Le marché ivoirien à portée de main</p><h1>${escapeHtml(etat.configuration.nom || "IKIGAI Market")}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p><div class="promo-actions"><a class="promo-action-principale" href="#produits">Voir les produits ${icone("arrow-down")}</a></div></div></div>${imagesBandeau.length > 1 ? `<div class="promo-commandes"><button type="button" data-hero-precedent aria-label="Image précédente">${icone("chevron-left")}</button><div class="promo-indicateurs">${imagesBandeau.map((_, index) => `<button type="button" data-hero-index="${index}" aria-label="Afficher l'image ${index + 1}" ${index === 0 ? 'aria-current="true"' : ""}></button>`).join("")}</div><button type="button" data-hero-suivant aria-label="Image suivante">${icone("chevron-right")}</button></div>` : ""}</section>
+    const bandeauSiteDedie = siteDedie
+      ? `<section class="promo-market ${modeBandeau}" aria-label="Bandeau principal">${imagesBandeau.length ? `<div class="promo-market-slides">${imagesBandeau.map((url, index) => `<div class="promo-market-slide ${index === 0 ? "actif" : ""}" aria-hidden="${index === 0 ? "false" : "true"}"><img src="${escapeHtml(url)}" alt=""></div>`).join("")}</div>` : ""}<div class="promo-market-contenu"><div class="promo-market-carte"><h1>${escapeHtml(etat.configuration.nom)}</h1><p>${escapeHtml(etat.configuration.slogan || etat.configuration.description)}</p></div></div>${imagesBandeau.length > 1 ? `<div class="promo-commandes"><button type="button" data-hero-precedent aria-label="Image précédente">${icone("chevron-left")}</button><div class="promo-indicateurs">${imagesBandeau.map((_, index) => `<button type="button" data-hero-index="${index}" aria-label="Afficher l'image ${index + 1}" ${index === 0 ? 'aria-current="true"' : ""}></button>`).join("")}</div><button type="button" data-hero-suivant aria-label="Image suivante">${icone("chevron-right")}</button></div>` : ""}</section>`
+      : "";
+    main.innerHTML = `${bandeauSiteDedie}
       <div class="conteneur catalogue-conteneur">
         <section class="catalogue-layout" id="produits">
           <aside class="filtres-catalogue" id="filtres-catalogue" aria-label="Catégories et filtres du catalogue" aria-hidden="true" inert>
@@ -122,8 +125,8 @@ export async function rendreAccueil() {
     rafraichirExperience(main);
 
     const promo = document.querySelector(".promo-market");
-    const diapositives = [...promo.querySelectorAll(".promo-market-slide")];
-    if (diapositives.length > 1) {
+    const diapositives = promo ? [...promo.querySelectorAll(".promo-market-slide")] : [];
+    if (promo && diapositives.length > 1) {
       const indicateurs = [...promo.querySelectorAll("[data-hero-index]")];
       const duree = Math.min(15, Math.max(3, Number(etat.configuration.hero_defilement_secondes || 6))) * 1000;
       const mouvementReduit = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -195,7 +198,7 @@ export async function rendreAccueil() {
       if (filtres.enStock) params.set("stock", "1");
       if (filtres.tri !== "PERTINENCE") params.set("tri", filtres.tri);
       if (filtres.page > 1) params.set("page", filtres.page);
-      history.pushState({}, "", `${location.pathname}${params.size ? `?${params}` : ""}#produits`);
+      history.pushState({}, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
     };
     const fermerFiltres = () => {
       const panneau = document.querySelector("#filtres-catalogue");
@@ -206,7 +209,7 @@ export async function rendreAccueil() {
       document.body.classList.remove("filtres-ouverts");
     };
     const recentrerCatalogue = () => {
-      document.querySelector("#produits").scrollIntoView({ behavior: "smooth", block: "start" });
+      document.querySelector(".resultats-catalogue").scrollIntoView({ behavior: "auto", block: "start" });
     };
     const afficherFiltresActifs = () => {
       const actifs = [];
@@ -253,8 +256,8 @@ export async function rendreAccueil() {
         document.querySelector("#titre-resultats").textContent = categories.find((element) => element.id === filtres.categorieId)?.nom || boutiques.find((element) => element.id === filtres.boutiqueId)?.nom || "Produits disponibles";
         const pages = Math.max(1, Math.ceil(resultat.total / resultat.parPage));
         document.querySelector("#pagination").innerHTML = pages > 1 ? `<button ${filtres.page <= 1 ? "disabled" : ""} data-page="${filtres.page - 1}">${icone("chevron-left")} Précédent</button><span>Page ${filtres.page} sur ${pages}</span><button ${filtres.page >= pages ? "disabled" : ""} data-page="${filtres.page + 1}">Suivant ${icone("chevron-right")}</button>` : "";
-        document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", async () => {
-          filtres.page = Number(button.dataset.page);
+        document.querySelectorAll("#pagination [data-page]").forEach((button) => button.addEventListener("click", async (event) => {
+          filtres.page = Number(event.currentTarget.dataset.page);
           mettreAJourUrl();
           await afficherCatalogue();
           recentrerCatalogue();
