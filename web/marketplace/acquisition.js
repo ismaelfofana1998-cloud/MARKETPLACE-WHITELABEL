@@ -9,7 +9,7 @@ import {
   coquille,
   etat,
   rafraichirExperience,
-} from "./shared.js?v=21";
+} from "./shared.js?v=22";
 
 export async function rendreAcquisition() {
   const retourMarchand = "./marchand.html";

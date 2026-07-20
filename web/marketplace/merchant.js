@@ -24,7 +24,7 @@ import {
   gererErreur,
   squelettePage,
   vide,
-} from "./shared.js?v=21";
+} from "./shared.js?v=22";
 import {
   rendreCodesMission,
   rendreComparaisonFrais,

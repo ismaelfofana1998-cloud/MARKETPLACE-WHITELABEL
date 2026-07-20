@@ -77,7 +77,7 @@ function preparerImages(racine = app) {
 
 function preparerApparitions(racine = app) {
   const mouvementReduit = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const elements = racine.querySelectorAll(".section, .categories-market, .ecosysteme-market, .produit, .boutique-carte, .carte:not(.resume-sticky)");
+  const elements = racine.querySelectorAll(".section, .categories-market, .ecosysteme-market, .produit, .spot-produit, .boutique-carte, .carte:not(.resume-sticky)");
   elements.forEach((element) => {
     if (element.dataset.apparitionPreparee) return;
     element.dataset.apparitionPreparee = "1";
@@ -269,10 +269,13 @@ export function coquille(contenu, options = {}) {
     : "";
   const compteLien = etat.session ? "./compte.html" : "./compte.html?mode=connexion";
   const recherche = new URLSearchParams(location.search).get("q") || "";
-  const prenom = etat.session?.user?.user_metadata?.prenom || etat.session?.user?.email?.split("@")[0] || "Compte";
+  const prenom = etat.session?.user?.user_metadata?.prenom || etat.session?.user?.email?.split("@")[0] || "";
   const nomApplication = configuration.nom || "IKIGAI Market";
   const siteDedie = estSiteDedie();
   const masquerAutresBoutiques = siteDedie && configuration.masquer_autres_boutiques !== false;
+  const accueilCompte = etat.session
+    ? `<span class="action-commerce-label">Bonjour ${escapeHtml(prenom)}</span>`
+    : "";
   const annonce = siteDedie && configuration.annonce
     ? `<div class="annonce-site-dedie">${escapeHtml(configuration.annonce)}</div>`
     : "";
@@ -290,12 +293,12 @@ export function coquille(contenu, options = {}) {
           <div class="suggestions-recherche masque" id="suggestions-recherche" role="listbox"></div>
         </form>
         <div class="bandeau-actions actions-commerce">
-          <a class="action-commerce action-compte" href="${compteLien}"><span class="action-commerce-label">Bonjour ${escapeHtml(prenom)}</span><strong>Compte</strong></a>
-          <a class="action-commerce" href="./compte.html"><span class="action-commerce-label">Retours</span><strong>Commandes</strong></a>
+          <a class="action-commerce action-compte" href="${compteLien}">${accueilCompte}<strong>Compte</strong></a>
+          <a class="action-commerce action-commandes" href="./compte.html"><strong>Commandes</strong></a>
           <a class="icone-btn panier-entete" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-cart")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}<strong>Panier</strong></a>
         </div>
       </div>
-      <div class="sous-navigation"><nav>${masquerAutresBoutiques ? "" : '<a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</nav><span>Livraison suivie par IKIGAI</span></div>`
+      <div class="sous-navigation"><span></span>${masquerAutresBoutiques ? "" : '<a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</div>`
     : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}${actionsGestion}</div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">
@@ -521,7 +524,6 @@ export function carteProduit(produit, favoris = new Set()) {
   const reduction = produit.prix_barre > produit.prix
     ? Math.round((1 - produit.prix / produit.prix_barre) * 100)
     : 0;
-  const varianteId = produit.variante_id || produit.variantes?.[0]?.id || "";
   return `<article class="produit" data-produit="${produit.id}">
     <button class="favori ${favoris.has(produit.id) ? "actif" : ""}" data-favori="${produit.id}" title="Favori" aria-label="Ajouter aux favoris">${icone("heart")}</button>
     ${reduction ? `<span class="remise-produit">-${reduction}%</span>` : ""}
@@ -535,7 +537,6 @@ export function carteProduit(produit, favoris = new Set()) {
       <div><span class="produit-prix">${fcfa(produit.prix)}</span>${produit.prix_barre ? `<span class="prix-barre">${fcfa(produit.prix_barre)}</span>` : ""}</div>
       <div class="note">${produit.note ? `${icone("star")} ${produit.note.toFixed(1)} <span>(${produit.avis_count || produit.avis_produits?.length || 0})</span>` : "Nouveau"}</div>
       <p class="livraison-produit">${icone("truck")} Livraison suivie IKIGAI</p>
-      <button class="btn-ajouter-produit" data-ajouter-panier="${varianteId}" ${produit.stock <= 0 || !varianteId ? "disabled" : ""}>${icone("shopping-cart")} ${produit.stock > 0 ? "Ajouter" : "Indisponible"}</button>
     </div>
   </article>`;
 }

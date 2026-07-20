@@ -180,6 +180,11 @@ h3 { font-size: 15px; line-height: 1.3; letter-spacing: 0; }
 .sous-navigation a { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; font-weight: 750; }
 .sous-navigation a:hover { color: white; }
 .sous-navigation svg { width: 15px; height: 15px; }
+.sous-navigation .navigation-vendre {
+  margin-left: auto;
+  color: rgba(255,255,255,.78);
+  font-size: 10px;
+}
 
 .promo-market { position: relative; min-height: clamp(320px, 26vw, 480px); overflow: hidden; background-color: var(--encre); color: white; display: flex; align-items: center; }
 .promo-market-slides, .promo-market-slide { position: absolute; inset: 0; }
@@ -1025,10 +1030,41 @@ html.navigation-en-cours::before {
   scroll-margin-top: 122px;
 }
 .resultats-entete { margin-bottom: 14px; }
-.outils-resultats .ouvrir-filtres,
 .filtres-entete .fermer-filtres {
   display: inline-flex;
 }
+.entete-catalogue-principale { display: flex; align-items: flex-start; gap: 13px; }
+.bouton-menu-catalogue {
+  flex: 0 0 auto;
+  min-width: 56px;
+  min-height: 52px;
+  padding: 7px 10px;
+  border: 1px solid var(--ligne);
+  border-radius: 12px;
+  background: white;
+  color: var(--encre);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, background-color .18s ease;
+}
+.bouton-menu-catalogue:hover { border-color: var(--primaire); background: var(--fond-chaud); }
+.bouton-menu-catalogue:active { transform: scale(.96); }
+.bouton-menu-catalogue svg { width: 20px; height: 20px; }
+.menu-section-titre {
+  margin: 5px 0 8px;
+  color: var(--texte-doux);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+#filtres-form > .menu-section-titre { margin-top: 0; }
 .filtres-catalogue {
   position: fixed;
   z-index: 91;
@@ -1088,8 +1124,11 @@ html.navigation-en-cours::before {
 }
 .resultats-catalogue .grille-produits {
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-flow: dense;
   gap: 11px;
 }
+.produit { min-height: 350px; }
+.produit .livraison-produit { margin-top: auto; margin-bottom: 0; padding-top: 10px; }
 .spot-produit {
   position: relative;
   grid-column: span 2;
@@ -1099,6 +1138,31 @@ html.navigation-en-cours::before {
   background: var(--encre);
   color: white;
   isolation: isolate;
+}
+.spot-produit-droite { grid-column: -3 / -1; }
+.spot-produit-gauche { grid-column: 1 / span 2; }
+.spot-produit-centre { grid-column: 3 / span 2; }
+.spot-produit-panoramique {
+  grid-column: 1 / -1;
+  min-height: 310px;
+}
+.spot-produit-panoramique .spot-produit-contenu { width: min(610px, 64%); }
+.spot-produit-panoramique > img { object-position: center 42%; }
+.spot-produit-gauche .spot-produit-voile {
+  background: linear-gradient(-100deg, rgba(7,18,15,.94) 0%, rgba(7,18,15,.7) 56%, rgba(7,18,15,.14) 100%);
+}
+.spot-produit-gauche .spot-produit-contenu {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
+}
+.spot-produit-centre .spot-produit-voile {
+  background: radial-gradient(circle at center, rgba(7,18,15,.82), rgba(7,18,15,.35));
+}
+.spot-produit-centre .spot-produit-contenu {
+  width: 100%;
+  align-items: center;
+  text-align: center;
 }
 .spot-produit > img {
   position: absolute;
@@ -1174,9 +1238,13 @@ body.filtres-ouverts { overflow: hidden; }
 }
 @media (max-width: 1050px) {
   .resultats-catalogue .grille-produits { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .spot-produit-centre { grid-column: 2 / span 2; }
 }
 @media (max-width: 819px) {
   .resultats-catalogue .grille-produits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .spot-produit-droite { grid-column: 2 / -1; }
+  .spot-produit-centre,
+  .spot-produit-panoramique { grid-column: 1 / -1; }
   .promo-market {
     min-height: 220px;
     align-items: center;
@@ -1193,6 +1261,7 @@ body.filtres-ouverts { overflow: hidden; }
     margin-top: 12px;
     justify-content: space-between;
   }
+  .entete-catalogue-principale { align-items: center; }
   .outils-resultats label { display: none; }
   .outils-resultats select { min-width: 0; flex: 1; }
 }
@@ -1206,7 +1275,12 @@ body.filtres-ouverts { overflow: hidden; }
     gap: 8px;
   }
   .spot-produit { min-height: 320px; }
+  .spot-produit-droite,
+  .spot-produit-gauche,
+  .spot-produit-centre,
+  .spot-produit-panoramique { grid-column: 1 / -1; }
   .spot-produit-contenu { width: 92%; padding: 22px; }
+  .spot-produit-panoramique .spot-produit-contenu { width: 92%; }
   .spot-produit-contenu h3 { font-size: 27px; }
 }
 /* Page d'acquisition des futurs tenants. */

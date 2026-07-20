@@ -30,7 +30,7 @@ import {
   rafraichirExperience,
   squelettePage,
   vide,
-} from "./shared.js?v=21";
+} from "./shared.js?v=22";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -97,12 +97,13 @@ export async function rendreAccueil() {
       <div class="conteneur catalogue-conteneur">
         <section class="catalogue-layout" id="produits">
           <aside class="filtres-catalogue" id="filtres-catalogue" aria-label="Catégories et filtres du catalogue" aria-hidden="true" inert>
-            <div class="filtres-entete"><div><p class="sur-titre">Explorer</p><h2>Catégories et filtres</h2></div><button class="dialogue-fermer fermer-filtres" type="button" aria-label="Fermer le menu">${icone("x")}</button></div>
+            <div class="filtres-entete"><div><p class="sur-titre">Navigation</p><h2>Menu du catalogue</h2></div><button class="dialogue-fermer fermer-filtres" type="button" aria-label="Fermer le menu">${icone("x")}</button></div>
+            <p class="menu-section-titre">Catégories</p>
             <div class="menu-categories" aria-label="Catégories de produits">
               <button type="button" data-categorie="">${icone("layout-grid")} Tous les produits</button>
               ${categories.map((categorie) => `<button type="button" data-categorie="${categorie.id}">${icone("chevron-right")} ${escapeHtml(categorie.nom)}</button>`).join("")}
             </div>
-            <form id="filtres-form">
+            <form id="filtres-form"><p class="menu-section-titre">Affiner les résultats</p>
               <div class="champ"><label for="filtre-categorie">Catégorie</label><select id="filtre-categorie" name="categorie"><option value="">Toutes les catégories</option>${categories.map((categorie) => `<option value="${categorie.id}">${escapeHtml(categorie.nom)}</option>`).join("")}</select></div>
               ${siteDedie ? `<input type="hidden" name="boutique" value="${boutiqueContexteId()}">` : `<div class="champ"><label for="filtre-boutique">Boutique</label><select id="filtre-boutique" name="boutique"><option value="">Tous les marchands</option>${boutiques.map((boutique) => `<option value="${boutique.id}">${escapeHtml(boutique.nom)}</option>`).join("")}</select></div>`}
               ${filtresDisponibles.prix === false ? "" : '<fieldset class="filtre-groupe"><legend>Prix (FCFA)</legend><div class="grille-prix"><input name="prix_min" type="number" min="0" max="2000000000" step="100" placeholder="Minimum"><input name="prix_max" type="number" min="0" max="2000000000" step="100" placeholder="Maximum"></div></fieldset>'}
@@ -113,7 +114,7 @@ export async function rendreAccueil() {
             </form>
           </aside>
           <section class="resultats-catalogue">
-            <div class="resultats-entete"><div><p class="sur-titre" id="contexte-resultats">Catalogue ${escapeHtml(etat.configuration.nom)}</p><h2 id="titre-resultats">Tous les produits</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div><div class="outils-resultats"><button class="btn btn-secondaire ouvrir-filtres" type="button">${icone("panel-left-open")} Catégories et filtres</button>${filtresDisponibles.tri === false ? "" : '<label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautés</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix décroissant</option><option value="NOTE">Mieux notés</option></select>'}</div></div>
+            <div class="resultats-entete"><div class="entete-catalogue-principale"><button class="bouton-menu-catalogue ouvrir-filtres" type="button" aria-label="Ouvrir le menu du catalogue">${icone("menu")}<span>Menu</span></button><div><p class="sur-titre" id="contexte-resultats">Catalogue ${escapeHtml(etat.configuration.nom)}</p><h2 id="titre-resultats">Tous les produits</h2><p class="muted petit" id="resultat-compte">Recherche en cours...</p></div></div><div class="outils-resultats">${filtresDisponibles.tri === false ? "" : '<label for="tri-produits">Trier par</label><select id="tri-produits"><option value="PERTINENCE">Pertinence</option><option value="NOUVEAUTES">Nouveautés</option><option value="PRIX_ASC">Prix croissant</option><option value="PRIX_DESC">Prix décroissant</option><option value="NOTE">Mieux notés</option></select>'}</div></div>
             <div class="filtres-actifs" id="filtres-actifs"></div>
             <div class="grille-produits grille-squelettes-produits" id="grille-produits" aria-busy="true">${Array.from({ length: 8 }, () => '<div class="squelette squelette-produit"></div>').join("")}</div>
             <div class="chargement-continu" id="chargement-continu" aria-live="polite"></div>
@@ -225,11 +226,11 @@ export async function rendreAccueil() {
       && filtres.noteMin === null
       && !filtres.enStock
       && filtres.tri === "PERTINENCE";
-    const spotMiseEnAvant = (produit) => {
+    const spotMiseEnAvant = (produit, variante) => {
       const reduction = produit.prix_barre > produit.prix
         ? Math.round((1 - produit.prix / produit.prix_barre) * 100)
         : 0;
-      return `<article class="spot-produit" aria-label="Produit mis en avant">
+      return `<article class="spot-produit spot-produit-${variante}" aria-label="Produit mis en avant">
         <img src="${escapeHtml(produit.image)}" alt="" loading="lazy">
         <div class="spot-produit-voile"></div>
         <div class="spot-produit-contenu">
@@ -247,6 +248,9 @@ export async function rendreAccueil() {
         contenu += carteProduit(produit, favoris);
         const positionGlobale = indexDepart + index + 1;
         if (estAccueilEditorial() && positionGlobale % 10 === 0) {
+          const numeroSpot = Math.floor(positionGlobale / 10);
+          const variantesSpot = ["droite", "gauche", "centre", "panoramique"];
+          const varianteSpot = variantesSpot[(numeroSpot - 1) % variantesSpot.length];
           const debutGroupe = Math.max(0, index - 9);
           const candidats = produits.slice(debutGroupe, index + 1);
           const produitMisEnAvant = candidats.sort((a, b) => {
@@ -254,7 +258,7 @@ export async function rendreAccueil() {
             const reductionB = b.prix_barre > b.prix ? 1 - b.prix / b.prix_barre : 0;
             return reductionB - reductionA;
           })[0] || produit;
-          contenu += spotMiseEnAvant(produitMisEnAvant);
+          contenu += spotMiseEnAvant(produitMisEnAvant, varianteSpot);
         }
       });
       return contenu;
