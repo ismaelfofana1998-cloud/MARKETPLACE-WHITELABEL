@@ -3,7 +3,7 @@ import { json, relationUnique } from "../_shared/operations.ts";
 import { estimerTarif, obtenirTarifsIkms } from "../_shared/tarifs-ikms.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MODES_PAIEMENT = new Set(["A_LA_LIVRAISON"]);
+const MODES_PAIEMENT = new Set(["A_LA_LIVRAISON", "WAVE"]);
 
 const objetUnique = (valeur: unknown) =>
   relationUnique(valeur as Record<string, unknown> | Record<string, unknown>[] | null);
@@ -38,8 +38,6 @@ Deno.serve(async (req) => {
   if (boutiqueContexteId && !UUID.test(boutiqueContexteId)) {
     return json({ error: "Contexte boutique invalide." }, 400);
   }
-  // Wave sera active par tenant dans un flux separe. Tant que ce flux n'est
-  // pas complet, le checkout ne doit pas creer un paiement global par erreur.
   if (!MODES_PAIEMENT.has(modePaiement)) {
     return json({ error: "Mode de paiement momentanement indisponible." }, 400);
   }
@@ -72,25 +70,37 @@ Deno.serve(async (req) => {
   }).filter(Boolean))];
   if (!boutiqueIds.length) return json({ error: "Le panier est vide." }, 400);
 
-  const estimations = await Promise.all(boutiqueIds.map(async (boutiqueId) => {
-    const { data: integration, error: integrationError } = await admin
-      .rpc("rpc_lire_integration_ikms_boutique", { p_boutique_id: boutiqueId });
-    if (
-      integrationError || !integration?.actif || !integration?.api_key ||
-      !integration?.api_base_url || !integration?.zone_depart
-    ) {
-      return { boutique_id: boutiqueId, montant: null };
-    }
-    const tarifs = await obtenirTarifsIkms({
-      boutiqueId,
-      apiBaseUrl: integration.api_base_url,
-      apiKey: integration.api_key,
-    });
-    return {
-      boutique_id: boutiqueId,
-      montant: estimerTarif(tarifs, integration.zone_depart, adresse.code_zone),
-    };
-  }));
+  const [{ data: configuration, error: configurationError }, { data: boutiques, error: boutiquesError }] =
+    await Promise.all([
+      admin.rpc("rpc_lire_configuration_ikms_catalogue"),
+      admin.from("boutiques")
+        .select("id, organisation_id, zone_ramassage, livraison_incluse_prix")
+        .in("id", boutiqueIds),
+    ]);
+  if (configurationError || boutiquesError || !configuration?.api_base_url || !configuration?.api_key) {
+    return json({ error: "Le catalogue tarifaire IKMS est indisponible." }, 503);
+  }
+
+  const tarifs = await obtenirTarifsIkms({
+    boutiqueId: "catalogue-plateforme",
+    apiBaseUrl: configuration.api_base_url,
+    apiKey: configuration.api_key,
+  });
+  const boutiqueParId = new Map((boutiques || []).map((boutique) => [boutique.id, boutique]));
+  const estimations = boutiqueIds.map((boutiqueId) => {
+    const boutique = boutiqueParId.get(boutiqueId);
+    const montant = boutique?.zone_ramassage
+      ? estimerTarif(tarifs, boutique.zone_ramassage, adresse.code_zone)
+      : null;
+    return { boutique_id: boutiqueId, montant };
+  });
+
+  if (estimations.some(({ montant }) => montant === null)) {
+    return json({
+      error: "Le tarif de livraison n'est pas disponible pour toutes les boutiques du panier.",
+      data: { estimations },
+    }, 409);
+  }
 
   const fraisParBoutique = Object.fromEntries(
     estimations.map(({ boutique_id, montant }) => [boutique_id, montant]),
@@ -111,6 +121,7 @@ Deno.serve(async (req) => {
       achat_id: achatId,
       estimation_complete: estimations.every(({ montant }) => montant !== null),
       estimations,
+      paiement_wave_requis: modePaiement === "WAVE",
     },
   });
 });

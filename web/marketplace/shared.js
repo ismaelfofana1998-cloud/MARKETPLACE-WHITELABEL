@@ -120,8 +120,26 @@ function installerExperienceGlobale() {
   };
   new MutationObserver(planifier).observe(app, { childList: true, subtree: true });
 
+  let dernierePosition = window.scrollY;
   const synchroniserBandeau = () => {
-    document.querySelector(".bandeau")?.classList.toggle("bandeau-defile", window.scrollY > 12);
+    const bandeau = document.querySelector(".bandeau");
+    if (!bandeau) return;
+    const position = Math.max(0, window.scrollY);
+    const mobile = window.matchMedia("(max-width: 819px)").matches;
+    bandeau.classList.toggle("bandeau-defile", position > 12);
+    if (position <= 12) {
+      bandeau.classList.remove("bandeau-cache", "bandeau-recherche-seule");
+    } else if (mobile) {
+      bandeau.classList.remove("bandeau-cache");
+      bandeau.classList.add("bandeau-recherche-seule");
+    } else if (position > dernierePosition + 4) {
+      bandeau.classList.add("bandeau-cache");
+      bandeau.classList.remove("bandeau-recherche-seule");
+    } else if (position < dernierePosition - 4) {
+      bandeau.classList.remove("bandeau-cache");
+      bandeau.classList.add("bandeau-recherche-seule");
+    }
+    dernierePosition = position;
   };
   window.addEventListener("scroll", synchroniserBandeau, { passive: true });
   synchroniserBandeau();
@@ -298,7 +316,7 @@ export function coquille(contenu, options = {}) {
           <a class="icone-btn panier-entete" href="./panier.html" title="Panier" aria-label="Panier">${icone("shopping-cart")}${etat.panier ? `<span class="compteur">${etat.panier}</span>` : ""}<strong>Panier</strong></a>
         </div>
       </div>
-      <div class="sous-navigation"><span></span>${masquerAutresBoutiques ? "" : '<a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</div>`
+      <div class="sous-navigation"><nav><a href="./index.html#produits">${icone("menu")} Toutes les catégories</a><a href="./index.html?tri=recent#produits">Nouveautés</a><a href="./index.html?tri=popularite#produits">Meilleures ventes</a>${etat.session ? '<a href="./compte.html">Mes commandes</a>' : ""}</nav>${masquerAutresBoutiques ? "" : '<a class="navigation-vendre" href="./vendre.html">Vendre</a>'}</div>`
     : `<div class="bandeau-ligne">${marque}${espace ? `<span class="bandeau-espace">${escapeHtml(espace)}</span>` : ""}${navigation}${actionsGestion}</div>`;
   const mobile = mode === "boutique"
     ? `<nav class="bottom-nav" aria-label="Navigation principale">

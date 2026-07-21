@@ -29,7 +29,7 @@ import {
   normaliserProduit,
   squelettePage,
   vide,
-} from "./shared.js?v=22";
+} from "./shared.js?v=23";
 import {
   rendreParcoursLivraison,
   statutSuiviMarketplace,

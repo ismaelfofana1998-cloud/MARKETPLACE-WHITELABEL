@@ -49,13 +49,20 @@ export function rendreCodesMission(mission, { marchand = false } = {}) {
 }
 
 export function rendreComparaisonFrais(commande, mission) {
-  if (!mission || mission.montant_livraison === null || mission.montant_livraison === undefined) return "";
+  const coutMission = mission?.montant_livraison;
+  const coutCommande = commande?.cout_livraison_ikms;
+  if ((coutMission === null || coutMission === undefined) && (coutCommande === null || coutCommande === undefined)) return "";
   const facture = Number(commande?.frais_livraison || 0);
-  const cout = Number(mission.montant_livraison || 0);
+  const coutDefinitif = coutMission !== null && coutMission !== undefined
+    ? Number(coutMission)
+    : Number(coutCommande || 0);
+  const coutEstDefinitif = Boolean(commande?.cout_livraison_ikms_definitif)
+    || (coutMission !== null && coutMission !== undefined);
+  const cout = coutDefinitif;
   const ecart = facture - cout;
   return `<div class="carte rapprochement-livraison">
-    <div><span class="muted petit">Facture au client</span><strong>${fcfa(facture)}</strong></div>
-    <div><span class="muted petit">Tarif livraison</span><strong>${fcfa(cout)}</strong></div>
-    <div class="${ecart < 0 ? "ecart-negatif" : ""}"><span class="muted petit">Ecart livraison</span><strong>${ecart > 0 ? "+" : ""}${fcfa(ecart)}</strong></div>
+    <div><span class="muted petit">Livraison payée par le client</span><strong>${commande?.livraison_incluse_prix ? "Incluse dans les articles" : fcfa(facture)}</strong></div>
+    <div><span class="muted petit">Coût IKMS à refacturer</span><strong>${fcfa(cout)}</strong><small>${coutEstDefinitif ? "Tarif confirmé par IKMS" : "Estimation avant expédition"}</small></div>
+    <div class="${ecart < 0 ? "ecart-negatif" : ""}"><span class="muted petit">Écart livraison</span><strong>${ecart > 0 ? "+" : ""}${fcfa(ecart)}</strong></div>
   </div>`;
 }

@@ -179,7 +179,7 @@ async function ensureUsers() {
       prenom: "Marchand",
       nom: `Test ${pad(index)}`,
       telephone: `070100${String(index).padStart(4, "0")}`,
-      zone_livraison: ["COCODY", "MARCORY", "YOPOUGON", "PLATEAU", "KOUMASSI"][index % 5],
+      zone_livraison: ["COC", "MAR", "NIANGO", "SELMER", "SICOGI", "YOP"][index % 6],
       donnees_test: true,
     };
     let user = usersByEmail.get(email);
@@ -272,7 +272,7 @@ async function seed() {
       prenom: "Marchand",
       nom: `Test ${pad(index)}`,
       telephone: `070100${String(index).padStart(4, "0")}`,
-      zone_livraison: ["COCODY", "MARCORY", "YOPOUGON", "PLATEAU", "KOUMASSI"][index % 5],
+      zone_livraison: ["COC", "MAR", "NIANGO", "SELMER", "SICOGI", "YOP"][index % 6],
       organisation_active_id: organisation.id,
     });
     shops.push({

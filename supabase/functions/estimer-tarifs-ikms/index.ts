@@ -57,30 +57,67 @@ Deno.serve(async (req) => {
     return json({ error: "Une boutique ne fait pas partie du panier actif." }, 403);
   }
 
-  const estimations = await Promise.all(boutiqueIds.map(async (boutiqueId) => {
-    const { data: integration, error: integrationError } = await admin
-      .rpc("rpc_lire_integration_ikms_boutique", { p_boutique_id: boutiqueId });
-    if (
-      integrationError || !integration?.actif || !integration?.api_key ||
-      !integration?.api_base_url || !integration?.zone_depart
-    ) {
-      return { boutique_id: boutiqueId, montant: null };
-    }
+  const [{ data: configuration, error: configurationError }, { data: boutiques, error: boutiquesError }] =
+    await Promise.all([
+      admin.rpc("rpc_lire_configuration_ikms_catalogue"),
+      admin.from("boutiques")
+        .select("id, nom, organisation_id, zone_ramassage, livraison_incluse_prix")
+        .in("id", boutiqueIds),
+    ]);
+  if (configurationError || boutiquesError) {
+    return json({ error: "Configuration de livraison inaccessible." }, 500);
+  }
 
-    const tarifs = await obtenirTarifsIkms({
-      boutiqueId,
-      apiBaseUrl: integration.api_base_url,
-      apiKey: integration.api_key,
-    });
+  const organisationIds = [...new Set((boutiques || []).map((boutique) => boutique.organisation_id))];
+  const { data: configurationsWave } = organisationIds.length
+    ? await admin.from("configurations_wave_organisation")
+      .select("organisation_id, actif, api_key_configuree, signing_secret_configure")
+      .in("organisation_id", organisationIds)
+    : { data: [] };
+  const waveParOrganisation = new Map(
+    (configurationsWave || []).map((wave) => [wave.organisation_id, wave]),
+  );
+  const boutiqueParId = new Map((boutiques || []).map((boutique) => [boutique.id, boutique]));
+
+  const tarifs = configuration?.api_base_url && configuration?.api_key
+    ? await obtenirTarifsIkms({
+      boutiqueId: "catalogue-plateforme",
+      apiBaseUrl: configuration.api_base_url,
+      apiKey: configuration.api_key,
+    })
+    : null;
+
+  const estimations = boutiqueIds.map((boutiqueId) => {
+    const boutique = boutiqueParId.get(boutiqueId);
+    const coutIkms = boutique?.zone_ramassage
+      ? estimerTarif(tarifs, boutique.zone_ramassage, zoneArrivee)
+      : null;
+    const livraisonIncluse = boutique?.livraison_incluse_prix === true;
+    const wave = boutique ? waveParOrganisation.get(boutique.organisation_id) : null;
     return {
       boutique_id: boutiqueId,
-      montant: estimerTarif(tarifs, integration.zone_depart, zoneArrivee),
+      boutique_nom: boutique?.nom || "Boutique",
+      zone_depart: boutique?.zone_ramassage || null,
+      cout_ikms: coutIkms,
+      montant: coutIkms === null ? null : (livraisonIncluse ? 0 : coutIkms),
+      livraison_incluse_prix: livraisonIncluse,
+      wave_disponible: Boolean(
+        wave?.actif && wave?.api_key_configuree && wave?.signing_secret_configure
+      ),
+      raison_indisponible: !boutique?.zone_ramassage
+        ? "Zone de ramassage non configuree."
+        : coutIkms === null
+        ? "Aucun tarif IKMS pour cette paire de zones."
+        : null,
     };
-  }));
+  });
 
   const complete = estimations.every((estimation) => estimation.montant !== null);
   const montantTotal = complete
     ? estimations.reduce((total, estimation) => total + Number(estimation.montant), 0)
+    : null;
+  const coutIkmsTotal = complete
+    ? estimations.reduce((total, estimation) => total + Number(estimation.cout_ikms), 0)
     : null;
 
   return json({
@@ -89,6 +126,8 @@ Deno.serve(async (req) => {
       estimations,
       complete,
       montant_total: montantTotal,
+      cout_ikms_total: coutIkmsTotal,
+      wave_disponible: complete && estimations.every((estimation) => estimation.wave_disponible),
     },
   });
 });

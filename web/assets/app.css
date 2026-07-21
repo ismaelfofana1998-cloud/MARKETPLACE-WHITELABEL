@@ -1789,3 +1789,85 @@ body.filtres-ouverts { overflow: hidden; }
   .acquisition-final h2 { font-size: 47px; }
   .acquisition-faq summary { font-size: 13px; }
 }
+
+/* Navigation adaptative : bandeau complet en haut, recherche seule au retour. */
+.bandeau {
+  will-change: transform;
+  transition: transform .22s ease, padding .22s ease, box-shadow .24s ease, background-color .24s ease;
+}
+.bandeau.bandeau-cache { transform: translateY(calc(-100% - 4px)); }
+.bandeau.bandeau-recherche-seule { padding-top: 6px; padding-bottom: 6px; }
+.bandeau.bandeau-recherche-seule .annonce-site-dedie,
+.bandeau.bandeau-recherche-seule .marque,
+.bandeau.bandeau-recherche-seule .actions-commerce,
+.bandeau.bandeau-recherche-seule .sous-navigation { display: none; }
+.bandeau.bandeau-recherche-seule .bandeau-commerce { min-height: 44px; }
+.bandeau.bandeau-recherche-seule .recherche-entete { flex-basis: 100%; }
+.sous-navigation {
+  min-height: 28px;
+  margin-top: 6px;
+  margin-bottom: -5px;
+  font-size: 11px;
+}
+.sous-navigation nav { gap: 24px; }
+.navigation-vendre {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 10px !important;
+}
+
+/* Panier et checkout : lecture par boutique et actions visibles. */
+.panier-actions-haut { margin: -4px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.btn-compact { min-height: 36px; padding: 0 11px; font-size: 12px; }
+.panier-boutiques { gap: 14px; }
+.panier-boutique { padding: 0 18px; overflow: hidden; }
+.panier-boutique-entete { min-height: 72px; margin: 0 -18px; padding: 13px 18px; background: var(--fond); border-bottom: 1px solid var(--ligne); }
+.panier-boutique-entete p,
+.panier-boutique-entete h2 { margin: 0; }
+.panier-boutique-entete h2 { margin-top: 3px; font-size: 17px; }
+.livraison-boutique { text-align: right; }
+.livraison-boutique span,
+.livraison-boutique strong { display: block; }
+.livraison-boutique span { color: var(--texte-doux); font-size: 10px; }
+.livraison-boutique strong { margin-top: 3px; font-size: 13px; }
+.panier-boutique .panier-ligne:last-child { border-bottom: 0; }
+.resume-panier,
+.resume-checkout { border: 1px solid color-mix(in srgb, var(--primaire) 25%, var(--ligne)); box-shadow: var(--ombre); }
+.resume-boutiques { display: grid; gap: 11px; }
+.checkout-boutique { padding-bottom: 11px; border-bottom: 1px dashed var(--ligne); }
+.checkout-boutique:last-child { padding-bottom: 0; border-bottom: 0; }
+.checkout-boutique .ligne-entre + .ligne-entre { margin-top: 5px; }
+.total-checkout strong:last-child { color: var(--primaire); font-size: 21px; }
+.choix-paiement { display: grid; gap: 10px; }
+.carte-choix { min-height: 72px; padding: 13px; border: 1px solid var(--ligne); border-radius: 10px; background: var(--papier); align-items: flex-start; }
+.carte-choix:has(input:checked) { border-color: var(--primaire); background: color-mix(in srgb, var(--primaire) 5%, white); }
+.carte-choix:has(input:disabled) { opacity: .62; }
+.paiements-wave-liste { gap: 10px; }
+.paiement-wave-ligne { min-height: 90px; padding: 14px; border: 1px solid var(--ligne); border-radius: 11px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.paiement-wave-ligne p,
+.paiement-wave-ligne h3 { margin: 0; }
+.paiement-wave-ligne h3 { margin: 3px 0 5px; }
+.btn-wave { min-height: 42px; padding: 0 15px; border-radius: 9px; background: #159fc4; color: white; display: inline-flex; align-items: center; gap: 7px; font-weight: 850; }
+.paiement-reussi > svg { color: var(--vert); }
+
+@media (max-width: 819px) {
+  .bandeau-commerce .actions-commerce,
+  .sous-navigation { display: none; }
+  .bandeau-commerce { grid-template-columns: 1fr; }
+  .bandeau-commerce .marque { grid-column: 1; grid-row: 1; }
+  .bandeau-commerce .recherche-entete { grid-column: 1; grid-row: 2; }
+  .bandeau.bandeau-recherche-seule .bandeau-commerce { display: block; }
+  .bandeau.bandeau-recherche-seule .recherche-entete { width: 100%; height: 40px; }
+  .panier-actions-haut { margin-top: 0; }
+  .panier-mise-en-page .resume-panier { margin-top: 14px; }
+  .checkout-page .entete-page { gap: 10px; }
+}
+
+@media (max-width: 520px) {
+  .panier-boutique { padding: 0 12px; }
+  .panier-boutique-entete { margin: 0 -12px; padding: 11px 12px; }
+  .livraison-boutique span { max-width: 105px; }
+  .paiement-wave-ligne { align-items: flex-start; flex-direction: column; }
+  .paiement-wave-ligne .btn-wave { width: 100%; justify-content: center; }
+}

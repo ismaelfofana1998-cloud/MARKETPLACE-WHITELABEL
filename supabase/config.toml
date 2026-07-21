@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.paiement-webhook]
 verify_jwt = false
+
+[functions.paiements-wave]
+verify_jwt = true

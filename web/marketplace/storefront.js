@@ -30,7 +30,7 @@ import {
   rafraichirExperience,
   squelettePage,
   vide,
-} from "./shared.js?v=22";
+} from "./shared.js?v=23";
 
 async function chargerBoutiques() {
   if (estSiteDedie()) return [etat.vitrine.boutique];
@@ -553,7 +553,7 @@ export async function chargerLignesPanier() {
   if (!etat.session) return [];
   let requete = supabase
     .from("lignes_panier")
-    .select("id, quantite, variante_id, paniers!inner(identite_id, statut, boutique_contexte_id), variantes_produit(id, nom, prix, actif, stocks(quantite), produits(id, boutique_id, nom, prix, images, statut, boutiques(id, nom, frais_livraison_base)))")
+    .select("id, quantite, variante_id, paniers!inner(identite_id, statut, boutique_contexte_id), variantes_produit(id, nom, prix, actif, stocks(quantite), produits(id, boutique_id, nom, prix, images, statut, boutiques(id, nom, zone_ramassage, livraison_incluse_prix)))")
     .eq("paniers.identite_id", etat.session.user.id)
     .eq("paniers.statut", "ACTIF");
   requete = boutiqueContexteId()
@@ -575,7 +575,7 @@ export async function chargerLignesPanier() {
   }).filter((ligne) => ligne.produit?.id);
 }
 
-export async function rendrePanier() {
+async function rendrePanierAvantTarification() {
   if (!etat.session) {
     coquille(`<main class="conteneur">${vide("shopping-bag", "Connecte-toi pour retrouver ton panier", "Ton panier et tes commandes sont synchronisés sur tous tes appareils.", '<button class="btn btn-primaire" id="connexion-panier">Se connecter</button>')}</main>`, { actif: "panier" });
     document.querySelector("#connexion-panier").addEventListener("click", () => demanderConnexion("./panier.html"));
@@ -608,7 +608,7 @@ export async function rendrePanier() {
   }
 }
 
-export async function rendreCheckout() {
+async function rendreCheckoutAvantTarification() {
   if (!etat.session) return demanderConnexion("./checkout.html");
   coquille(squelettePage("contenu"), { actif: "panier" });
   try {
@@ -736,4 +736,287 @@ export async function rendreCheckout() {
   } catch (error) {
     coquille(`<main class="conteneur">${vide("triangle-alert", "Impossible de finaliser", messageErreur(error), '<a class="btn btn-secondaire" href="./panier.html">Retour au panier</a>')}</main>`, { actif: "panier" });
   }
+}
+
+const grouperPanierParBoutique = (lignes) => {
+  const groupes = new Map();
+  lignes.forEach((ligne) => {
+    const id = ligne.produit.boutique.id;
+    if (!groupes.has(id)) groupes.set(id, { boutique: ligne.produit.boutique, lignes: [] });
+    groupes.get(id).lignes.push(ligne);
+  });
+  return [...groupes.values()];
+};
+
+async function demanderEstimation(groupes, zoneArrivee) {
+  if (!zoneArrivee) return null;
+  const { data, error } = await supabase.functions.invoke("estimer-tarifs-ikms", {
+    body: {
+      boutique_ids: groupes.map((groupe) => groupe.boutique.id),
+      zone_arrivee: zoneArrivee,
+    },
+  });
+  if (error) return null;
+  return data?.data || null;
+}
+
+function ligneFraisEstime(estimation) {
+  if (!estimation || estimation.montant === null) return "Indisponible";
+  return estimation.livraison_incluse_prix ? "Incluse" : fcfa(estimation.montant);
+}
+
+export async function rendrePanier() {
+  if (!etat.session) {
+    coquille(`<main class="conteneur">${vide("shopping-bag", "Connecte-toi pour retrouver ton panier", "Ton panier et tes commandes sont synchronisés sur tous tes appareils.", '<button class="btn btn-primaire" id="connexion-panier">Se connecter</button>')}</main>`, { actif: "panier" });
+    document.querySelector("#connexion-panier")?.addEventListener("click", () => demanderConnexion("./panier.html"));
+    return;
+  }
+
+  coquille(squelettePage("contenu"), { actif: "panier" });
+  try {
+    const [lignes, profilResultat, adresseResultat] = await Promise.all([
+      chargerLignesPanier(),
+      supabase.from("identites").select("zone_livraison").eq("id", etat.session.user.id).single(),
+      supabase.from("adresses_livraison").select("code_zone").eq("identite_id", etat.session.user.id).eq("principale", true).maybeSingle(),
+    ]);
+    const groupes = grouperPanierParBoutique(lignes);
+    const sousTotal = lignes.reduce((total, ligne) => total + ligne.produit.prix_effectif * ligne.quantite, 0);
+    const zoneArrivee = adresseResultat.data?.code_zone || profilResultat.data?.zone_livraison || "";
+
+    const contenu = lignes.length
+      ? `<div class="panier-actions-haut"><a class="btn btn-secondaire btn-compact" href="./index.html">${icone("arrow-left")} Continuer mes achats</a><button class="btn btn-texte btn-compact" id="fermer-panier">${icone("x")} Fermer</button></div><div class="deux-colonnes panier-mise-en-page"><section class="pile panier-boutiques">${groupes.map((groupe) => `<article class="carte panier-boutique"><div class="ligne-entre panier-boutique-entete"><div><p class="muted petit">Vendu par</p><h2>${escapeHtml(groupe.boutique.nom)}</h2></div><div class="livraison-boutique"><span>Livraison estimée</span><strong data-frais-boutique="${groupe.boutique.id}">Calcul...</strong></div></div>${groupe.lignes.map((ligne) => `<div class="panier-ligne"><a href="./produit.html?id=${ligne.produit.id}"><img src="${escapeHtml(ligne.produit.image)}" alt="${escapeHtml(ligne.produit.nom)}"></a><div><h3>${escapeHtml(ligne.produit.nom)}</h3>${ligne.variante?.nom !== "Standard" ? `<p class="petit muted">${escapeHtml(ligne.variante?.nom)}</p>` : ""}<strong>${fcfa(ligne.produit.prix_effectif)}</strong>${ligne.quantite > ligne.stock ? '<p class="petit" style="color:var(--danger)">Stock insuffisant</p>' : ""}</div><div class="actions-ligne pile"><div class="stepper"><button data-moins="${ligne.id}" aria-label="Diminuer">${icone("minus")}</button><span>${ligne.quantite}</span><button data-plus="${ligne.id}" aria-label="Augmenter">${icone("plus")}</button></div><button class="btn btn-texte" data-supprimer="${ligne.id}">${icone("trash-2")} Retirer</button></div></div>`).join("")}</article>`).join("")}</section><aside class="carte resume-sticky resume-panier"><h2>Résumé</h2><div class="ligne-entre"><span>Articles</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:10px"><span>Livraison</span><strong id="panier-frais-total">Calcul...</strong></div><p class="muted petit" id="panier-message-tarif" aria-live="polite">${zoneArrivee ? `Calcul pour la zone ${escapeHtml(zoneArrivee)}.` : "Ta zone sera choisie à l'étape suivante."}</p><hr class="separateur"><div class="ligne-entre"><strong>Total estimé</strong><strong id="panier-total-estime">${fcfa(sousTotal)}</strong></div><a class="btn btn-primaire btn-bloc" style="margin-top:18px" href="./checkout.html">Passer la commande ${icone("arrow-right")}</a><a class="btn btn-secondaire btn-bloc" style="margin-top:8px" href="./index.html">Continuer mes achats</a></aside></div>`
+      : vide("shopping-bag", "Ton panier est vide", "Explore le catalogue et ajoute les produits qui te plaisent.", '<a class="btn btn-primaire" href="./index.html">Voir le catalogue</a>');
+    coquille(`<main class="conteneur"><div class="entete-page"><div><h1>Mon panier</h1><p class="muted">${lignes.length} article${lignes.length > 1 ? "s" : ""} · ${groupes.length} boutique${groupes.length > 1 ? "s" : ""}</p></div></div>${contenu}</main>`, { actif: "panier" });
+
+    document.querySelector("#fermer-panier")?.addEventListener("click", () => {
+      location.href = "./index.html";
+    });
+    const modifier = async (id, quantite) => {
+      const { error } = await supabase.rpc("rpc_modifier_ligne_panier", { p_ligne_id: id, p_quantite: quantite });
+      if (error) return gererErreur(error);
+      await rendrePanier();
+    };
+    document.querySelectorAll("[data-moins]").forEach((bouton) => bouton.addEventListener("click", () => {
+      const ligne = lignes.find((element) => element.id === bouton.dataset.moins);
+      modifier(ligne.id, ligne.quantite - 1);
+    }));
+    document.querySelectorAll("[data-plus]").forEach((bouton) => bouton.addEventListener("click", () => {
+      const ligne = lignes.find((element) => element.id === bouton.dataset.plus);
+      modifier(ligne.id, ligne.quantite + 1);
+    }));
+    document.querySelectorAll("[data-supprimer]").forEach((bouton) => bouton.addEventListener("click", () => modifier(bouton.dataset.supprimer, 0)));
+
+    if (lignes.length && zoneArrivee) {
+      const estimation = await demanderEstimation(groupes, zoneArrivee);
+      (estimation?.estimations || []).forEach((element) => {
+        const cible = document.querySelector(`[data-frais-boutique="${element.boutique_id}"]`);
+        if (cible) cible.textContent = ligneFraisEstime(element);
+      });
+      const frais = document.querySelector("#panier-frais-total");
+      const total = document.querySelector("#panier-total-estime");
+      const message = document.querySelector("#panier-message-tarif");
+      if (estimation?.complete) {
+        frais.textContent = fcfa(estimation.montant_total);
+        total.textContent = fcfa(sousTotal + Number(estimation.montant_total));
+        message.textContent = `Estimation IKMS pour ${zoneArrivee}, détaillée par boutique.`;
+      } else {
+        frais.textContent = "À compléter";
+        message.textContent = estimation?.estimations?.find((element) => element.raison_indisponible)?.raison_indisponible
+          || "Le tarif IKMS n'est pas disponible pour toutes les boutiques.";
+      }
+    } else if (lignes.length) {
+      document.querySelectorAll("[data-frais-boutique]").forEach((element) => { element.textContent = "Au checkout"; });
+      document.querySelector("#panier-frais-total").textContent = "Au checkout";
+    }
+    rafraichirIcones(app);
+  } catch (error) {
+    coquille(`<main class="conteneur">${vide("triangle-alert", "Panier indisponible", messageErreur(error))}</main>`, { actif: "panier" });
+  }
+}
+
+export async function rendreCheckout() {
+  if (!etat.session) return demanderConnexion("./checkout.html");
+  coquille(squelettePage("contenu"), { actif: "panier" });
+  try {
+    const [lignes, profilResultat, adressesResultat, catalogueZones] = await Promise.all([
+      chargerLignesPanier(),
+      supabase.from("identites").select("prenom, nom, telephone, zone_livraison").eq("id", etat.session.user.id).single(),
+      supabase.from("adresses_livraison").select("*").eq("identite_id", etat.session.user.id).order("principale", { ascending: false }).order("cree_le", { ascending: false }),
+      chargerZonesIkms(etat.configuration),
+    ]);
+    if (!lignes.length) { location.href = "./panier.html"; return; }
+    const profil = profilResultat.data || {};
+    const adresses = adressesResultat.data || [];
+    const zones = catalogueZones.zones;
+    const groupes = grouperPanierParBoutique(lignes);
+    const sousTotal = lignes.reduce((total, ligne) => total + ligne.produit.prix_effectif * ligne.quantite, 0);
+    const optionsZones = (selection = "") => `${selection && !zones.some((zone) => zone.code === selection) ? `<option value="${escapeHtml(selection)}" selected>${escapeHtml(selection)}</option>` : ""}${zones.map((zone) => `<option value="${escapeHtml(zone.code)}" ${zone.code === selection ? "selected" : ""}>${escapeHtml(zone.nom || zone.code)}</option>`).join("")}`;
+
+    const resumeBoutiques = groupes.map((groupe) => {
+      const total = groupe.lignes.reduce((somme, ligne) => somme + ligne.produit.prix_effectif * ligne.quantite, 0);
+      return `<div class="checkout-boutique"><div class="ligne-entre"><strong>${escapeHtml(groupe.boutique.nom)}</strong><strong>${fcfa(total)}</strong></div><div class="ligne-entre petit muted"><span>Livraison</span><strong data-checkout-frais="${groupe.boutique.id}">Calcul...</strong></div></div>`;
+    }).join("");
+
+    coquille(`<main class="conteneur checkout-page"><div class="entete-page"><div><h1>Finaliser la commande</h1><p class="muted">Vérifie la livraison et choisis ton paiement.</p></div><a class="btn btn-secondaire btn-compact" href="./panier.html">${icone("arrow-left")} Panier</a></div><form id="checkout-form" class="deux-colonnes"><section class="pile"><div class="carte"><h2>1. Adresse de livraison</h2>${adresses.length ? `<div class="champ"><label>Adresse enregistrée</label><select name="adresse_id" id="adresse-select">${adresses.map((adresse) => `<option value="${adresse.id}">${escapeHtml(adresse.libelle)} · ${escapeHtml(adresse.adresse)}</option>`).join("")}<option value="nouvelle">Utiliser une nouvelle adresse</option></select></div><div class="champ" id="zone-adresse-existante"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone_existante" required><option value="">Choisir une zone</option>${optionsZones(adresses[0]?.code_zone || profil.zone_livraison || "")}</select>` : `<input name="code_zone_existante" value="${escapeHtml(adresses[0]?.code_zone || profil.zone_livraison || "")}" placeholder="COC" required>`}</div>` : '<input type="hidden" name="adresse_id" value="nouvelle">'}<div id="nouvelle-adresse" class="${adresses.length ? "masque" : ""}"><div class="grille-deux"><div class="champ"><label>Nom du destinataire</label><input name="destinataire_nom" value="${escapeHtml(`${profil.prenom || ""} ${profil.nom || ""}`.trim())}"></div><div class="champ"><label>Téléphone</label><input name="telephone" type="tel" value="${escapeHtml(profil.telephone || "")}"></div></div><div class="champ"><label>Adresse précise</label><input name="adresse" placeholder="Quartier, rue, repère"></div><div class="grille-deux"><div class="champ"><label>Commune</label><input name="commune" placeholder="Cocody"></div><div class="champ"><label>Libellé</label><input name="libelle" value="Domicile"></div></div><div class="champ"><label>Zone de livraison</label>${zones.length ? `<select name="code_zone"><option value="">Choisir une zone</option>${optionsZones(profil.zone_livraison || "")}</select>` : `<input name="code_zone" value="${escapeHtml(profil.zone_livraison || "")}" placeholder="COC">`}</div><div class="champ"><label>Indications</label><textarea name="indications" placeholder="Bâtiment, portail, point de repère..."></textarea></div></div></div><div class="carte"><h2>2. Paiement</h2><div class="choix-paiement"><label class="case carte-choix"><input type="radio" name="mode_paiement" value="A_LA_LIVRAISON" checked><span><strong>Paiement à la livraison</strong><br><span class="muted petit">Le montant de chaque boutique est réglé à la remise.</span></span></label><label class="case carte-choix" id="choix-wave"><input type="radio" name="mode_paiement" value="WAVE" disabled><span><strong>Wave</strong><br><span class="muted petit" id="message-wave">Vérification des comptes marchands...</span></span></label></div></div><div class="carte"><h2>3. Instructions</h2><div class="champ"><label>Note pour les marchands ou le livreur</label><textarea name="note" placeholder="Facultatif"></textarea></div></div></section><aside class="carte resume-sticky resume-checkout"><h2>Votre commande</h2><div class="resume-boutiques">${resumeBoutiques}</div><hr class="separateur"><div class="ligne-entre"><span>Articles</span><strong>${fcfa(sousTotal)}</strong></div><div class="ligne-entre" style="margin-top:9px"><span>Livraison</span><strong id="frais-livraison-estimes">—</strong></div><p class="muted petit" id="message-estimation-livraison" aria-live="polite">Choisissez une zone pour calculer la livraison.</p><hr class="separateur"><div class="ligne-entre total-checkout"><strong>Total à payer</strong><strong id="total-checkout-estime">—</strong></div><button class="btn btn-primaire btn-bloc" style="margin-top:18px" id="confirmer" disabled>${icone("lock-keyhole")} Confirmer et payer</button><p class="muted petit" style="margin:12px 0 0">Le coût IKMS définitif reste une donnée interne de facturation marchand. Le montant accepté ici ne sera pas augmenté après paiement.</p></aside></form></main>`, { actif: "panier" });
+
+    const adresseSelect = document.querySelector("#adresse-select");
+    const bouton = document.querySelector("#confirmer");
+    let estimationCourante = null;
+    let numeroEstimation = 0;
+    let minuterieEstimation;
+    const zoneSelectionnee = () => {
+      const nouvelle = !adresseSelect || adresseSelect.value === "nouvelle";
+      return document.querySelector(nouvelle ? '[name="code_zone"]' : '[name="code_zone_existante"]')?.value?.trim().toUpperCase() || "";
+    };
+    const afficherEstimation = (estimation) => {
+      estimationCourante = estimation?.complete ? estimation : null;
+      const frais = document.querySelector("#frais-livraison-estimes");
+      const total = document.querySelector("#total-checkout-estime");
+      const message = document.querySelector("#message-estimation-livraison");
+      (estimation?.estimations || []).forEach((element) => {
+        const cible = document.querySelector(`[data-checkout-frais="${element.boutique_id}"]`);
+        if (cible) cible.textContent = ligneFraisEstime(element);
+      });
+      const radioWave = document.querySelector('[name="mode_paiement"][value="WAVE"]');
+      const messageWave = document.querySelector("#message-wave");
+      if (estimation?.complete) {
+        frais.textContent = fcfa(estimation.montant_total);
+        total.textContent = fcfa(sousTotal + Number(estimation.montant_total));
+        message.textContent = `Prix estimé pour ${zoneSelectionnee()}, vérifié à nouveau lors de la validation.`;
+        bouton.disabled = false;
+        radioWave.disabled = !estimation.wave_disponible;
+        messageWave.textContent = estimation.wave_disponible
+          ? `Paiement sécurisé, un règlement par boutique (${groupes.length}).`
+          : "Indisponible : au moins une boutique n'a pas encore activé Wave.";
+        if (!estimation.wave_disponible && radioWave.checked) document.querySelector('[name="mode_paiement"][value="A_LA_LIVRAISON"]').checked = true;
+      } else {
+        frais.textContent = "Indisponible";
+        total.textContent = `${fcfa(sousTotal)} + livraison`;
+        message.textContent = estimation?.estimations?.find((element) => element.raison_indisponible)?.raison_indisponible || "Le tarif IKMS n'est pas disponible pour toutes les boutiques.";
+        bouton.disabled = true;
+        radioWave.disabled = true;
+        messageWave.textContent = "Disponible après le calcul complet de la livraison.";
+      }
+    };
+    const actualiserEstimation = async () => {
+      const zone = zoneSelectionnee();
+      const numero = ++numeroEstimation;
+      estimationCourante = null;
+      bouton.disabled = true;
+      if (!zone) {
+        document.querySelector("#message-estimation-livraison").textContent = "Choisissez une zone pour calculer la livraison.";
+        return null;
+      }
+      document.querySelector("#message-estimation-livraison").textContent = "Calcul du tarif IKMS...";
+      const estimation = await demanderEstimation(groupes, zone);
+      if (numero !== numeroEstimation) return null;
+      afficherEstimation(estimation);
+      return estimation;
+    };
+    const planifierEstimation = () => {
+      clearTimeout(minuterieEstimation);
+      minuterieEstimation = setTimeout(actualiserEstimation, 200);
+    };
+    adresseSelect?.addEventListener("change", () => {
+      const nouvelle = adresseSelect.value === "nouvelle";
+      document.querySelector("#nouvelle-adresse").classList.toggle("masque", !nouvelle);
+      document.querySelector("#zone-adresse-existante")?.classList.toggle("masque", nouvelle);
+      const adresse = adresses.find((element) => element.id === adresseSelect.value);
+      const champ = document.querySelector('[name="code_zone_existante"]');
+      if (champ && adresse) champ.value = adresse.code_zone || "";
+      planifierEstimation();
+    });
+    document.querySelectorAll('[name="code_zone"], [name="code_zone_existante"]').forEach((champ) => {
+      champ.addEventListener("change", planifierEstimation);
+      champ.addEventListener("input", planifierEstimation);
+    });
+    await actualiserEstimation();
+
+    document.querySelector("#checkout-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const valeurs = Object.fromEntries(new FormData(event.currentTarget));
+      let adresseId = valeurs.adresse_id;
+      if (!estimationCourante) return toast("Le prix de livraison doit être calculé avant de continuer.", true);
+      if (adresseId === "nouvelle") {
+        if (!valeurs.destinataire_nom?.trim() || !valeurs.telephone?.trim() || !valeurs.adresse?.trim() || !valeurs.code_zone?.trim()) return toast("Nom, téléphone, adresse et zone sont requis.", true);
+        boutonOccupe(bouton, true, "Enregistrement...");
+        const { data, error } = await supabase.from("adresses_livraison").insert({
+          identite_id: etat.session.user.id,
+          destinataire_nom: valeurs.destinataire_nom.trim(),
+          telephone: valeurs.telephone.trim(),
+          adresse: valeurs.adresse.trim(),
+          commune: valeurs.commune?.trim() || null,
+          libelle: valeurs.libelle?.trim() || "Domicile",
+          indications: valeurs.indications?.trim() || null,
+          code_zone: valeurs.code_zone.trim().toUpperCase(),
+          principale: adresses.length === 0,
+        }).select("id").single();
+        if (error) { boutonOccupe(bouton, false); return gererErreur(error); }
+        adresseId = data.id;
+      } else {
+        const codeZone = valeurs.code_zone_existante?.trim().toUpperCase();
+        if (!codeZone) return toast("Choisis la zone de livraison.", true);
+        const adresse = adresses.find((element) => element.id === adresseId);
+        if (adresse?.code_zone !== codeZone) {
+          const { error } = await supabase.from("adresses_livraison").update({ code_zone: codeZone }).eq("id", adresseId);
+          if (error) return gererErreur(error);
+        }
+      }
+      boutonOccupe(bouton, true, valeurs.mode_paiement === "WAVE" ? "Préparation de Wave..." : "Validation...");
+      const { data: validation, error } = await supabase.functions.invoke("valider-panier-ikms", {
+        body: {
+          adresse_id: adresseId,
+          mode_paiement: valeurs.mode_paiement,
+          note: valeurs.note?.trim() || null,
+          boutique_contexte_id: boutiqueContexteId(),
+        },
+      });
+      if (error) { boutonOccupe(bouton, false); return gererErreur(error); }
+      const achatId = validation?.data?.achat_id;
+      if (!achatId) { boutonOccupe(bouton, false); return toast("La commande n'a pas pu être créée.", true); }
+      if (valeurs.mode_paiement === "WAVE") {
+        location.href = `./paiement.html?achat=${achatId}`;
+        return;
+      }
+      await supabase.functions.invoke("sync-livraisons", { body: { achat_id: achatId, notifications_uniquement: true } });
+      toast("Commande confirmée");
+      location.href = `./compte.html?commande=${achatId}`;
+    });
+    rafraichirIcones(app);
+  } catch (error) {
+    coquille(`<main class="conteneur">${vide("triangle-alert", "Impossible de finaliser", messageErreur(error), '<a class="btn btn-secondaire" href="./panier.html">Retour au panier</a>')}</main>`, { actif: "panier" });
+  }
+}
+
+export async function rendrePaiementWave() {
+  if (!etat.session) return demanderConnexion(location.href);
+  const achatId = new URLSearchParams(location.search).get("achat") || "";
+  if (!achatId) {
+    coquille(`<main class="conteneur">${vide("triangle-alert", "Paiement introuvable", "Aucune commande n'a été indiquée.", '<a class="btn btn-primaire" href="./compte.html">Mes commandes</a>')}</main>`, { actif: "panier" });
+    return;
+  }
+  coquille(`<main class="conteneur conteneur-etroit"><div class="entete-page"><div><h1>Paiement Wave</h1><p class="muted">Chaque boutique reçoit directement son règlement.</p></div></div><div class="carte" id="paiements-wave-zone">${squelettePage("paiements")}</div></main>`, { actif: "panier" });
+
+  const charger = async () => {
+    const zone = document.querySelector("#paiements-wave-zone");
+    zone.innerHTML = `<div class="chargement-inline">${icone("loader-circle", "tourne")} Vérification des paiements...</div>`;
+    rafraichirIcones(zone);
+    const { data, error } = await supabase.functions.invoke("paiements-wave", { body: { achat_id: achatId } });
+    if (error || !data?.data) {
+      zone.innerHTML = `<div class="vide">${icone("triangle-alert")}<h2>Wave est momentanément indisponible</h2><p>${escapeHtml(messageErreur(error))}</p><button class="btn btn-secondaire" id="reessayer-wave">Réessayer</button></div>`;
+      zone.querySelector("#reessayer-wave")?.addEventListener("click", charger);
+      rafraichirIcones(zone);
+      return;
+    }
+    const resultat = data.data;
+    if (resultat.complet) {
+      zone.innerHTML = `<div class="vide paiement-reussi">${icone("badge-check")}<h2>Paiement confirmé</h2><p>Toutes les boutiques ont reçu leur règlement.</p><a class="btn btn-primaire" href="./compte.html?commande=${achatId}">Voir ma commande</a></div>`;
+      rafraichirIcones(zone);
+      return;
+    }
+    zone.innerHTML = `<div class="bande-info"><strong>${escapeHtml(resultat.reference)}</strong><p class="petit" style="margin:5px 0 0">Réglez chaque ligne ci-dessous. Après un paiement, Wave vous ramène automatiquement ici.</p></div><div class="pile paiements-wave-liste" style="margin-top:15px">${resultat.paiements.map((paiement) => `<article class="paiement-wave-ligne"><div><p class="muted petit">Boutique</p><h3>${escapeHtml(paiement.boutique_nom)}</h3><strong>${fcfa(paiement.montant)}</strong></div>${paiement.statut === "CONFIRME" ? '<span class="badge badge-succes">Payé</span>' : paiement.wave_launch_url ? `<a class="btn btn-wave" href="${escapeHtml(paiement.wave_launch_url)}">Payer avec Wave ${icone("external-link")}</a>` : `<span class="badge badge-attention" title="${escapeHtml(paiement.erreur || "Indisponible")}">Indisponible</span>`}</article>`).join("")}</div><div class="ligne" style="margin-top:18px"><button class="btn btn-secondaire" id="actualiser-wave">${icone("refresh-cw")} Actualiser</button><a class="btn btn-texte" href="./compte.html?commande=${achatId}">Voir la commande</a></div>`;
+    zone.querySelector("#actualiser-wave")?.addEventListener("click", charger);
+    rafraichirIcones(zone);
+  };
+  await charger();
 }

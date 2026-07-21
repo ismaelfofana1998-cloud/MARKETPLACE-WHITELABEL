@@ -24,12 +24,12 @@ import {
   gererErreur,
   squelettePage,
   vide,
-} from "./shared.js?v=22";
+} from "./shared.js?v=23";
 import {
   rendreCodesMission,
   rendreComparaisonFrais,
   rendreParcoursLivraison,
-} from "./logistics.js?v=18";
+} from "./logistics.js?v=19";
 
 let canalCommandes = null;
 
@@ -121,7 +121,7 @@ async function chargerEspace(organisation, boutiqueId = null) {
   await supabase.functions.invoke("sync-livraisons", { body: {} }).catch(() => null);
   const [produits, commandes, categories, categoriesBoutique, membres, integration, offre, configurationSite, domaines, wave] = await Promise.all([
     supabase.from("produits").select("id, boutique_id, categorie_id, categorie_boutique_id, nom, description, marque, prix, prix_barre, images, statut, cree_le, variantes_produit(id, nom, sku, actif, stocks(quantite, seuil_alerte))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }),
-    supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, frais_livraison_a_confirmer, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications, code_zone)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_ramassage, code_livraison, montant_livraison, derniere_synchronisation, derniere_erreur))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
+    supabase.from("commandes_marketplace").select("id, achat_id, reference, statut, sous_total, frais_livraison, frais_livraison_a_confirmer, cout_livraison_ikms, cout_livraison_ikms_definitif, livraison_incluse_prix, total, note_client, vue_le, motif_annulation, cree_le, achats(reference, statut_paiement, mode_paiement, adresses_livraison(destinataire_nom, telephone, adresse, commune, indications, code_zone)), lignes_commande_marketplace(id, nom_produit, nom_variante, image_url, prix_unitaire, quantite), missions_logistiques(statut, statut_ikms, commande_livraison_externe_id, code_ramassage, code_livraison, montant_livraison, derniere_synchronisation, derniere_erreur))").eq("boutique_id", boutique.id).order("cree_le", { ascending: false }).limit(200),
     supabase.from("categories_marketplace").select("id, nom").eq("actif", true).order("ordre"),
     supabase.from("categories_boutique").select("id, boutique_id, nom, slug, description, image_url, ordre, actif").eq("boutique_id", boutique.id).order("ordre").order("nom"),
     supabase.from("membres_organisation").select("identite_id, role, statut, identites(prenom, nom, email)").eq("organisation_id", organisation.id).order("cree_le"),
@@ -129,7 +129,7 @@ async function chargerEspace(organisation, boutiqueId = null) {
     supabase.from("offres_organisations").select("offre, white_label_actif, domaines_personnalises, max_etablissements, active").eq("organisation_id", organisation.id).maybeSingle(),
     supabase.from("configurations_boutique").select("*").eq("boutique_id", boutique.id).maybeSingle(),
     supabase.from("domaines_boutique").select("id, boutique_id, domaine, statut, principal, jeton_verification, verifie_le").eq("boutique_id", boutique.id).order("principal", { ascending: false }),
-    supabase.from("configurations_wave_organisation").select("organisation_id, actif, api_key_configuree, signing_secret_configure, api_key_suffixe, modifie_le").eq("organisation_id", organisation.id).maybeSingle(),
+    supabase.from("configurations_wave_organisation").select("organisation_id, actif, api_key_configuree, signing_secret_configure, api_key_suffixe, jeton_webhook, modifie_le").eq("organisation_id", organisation.id).maybeSingle(),
   ]);
   const erreur = [produits.error, commandes.error, categories.error, categoriesBoutique.error, membres.error, integration.error, offre.error, configurationSite.error, domaines.error, wave.error].find(Boolean);
   if (erreur) throw erreur;
@@ -596,7 +596,10 @@ function afficherSiteDedie(donnees) {
 function afficherPaiements(organisation, donnees) {
   const zone = document.querySelector("#marchand-zone");
   const wave = donnees.wave || {};
-  zone.innerHTML = `<div class="entete-page"><div><h2>Paiements du tenant</h2><p class="muted petit">Une configuration Wave propre a ${escapeHtml(organisation.nom)}, partagee par ses etablissements.</p></div>${badgeStatut(wave.actif ? "ACTIF" : "SUSPENDUE")}</div><div class="bande-info bande-attention"><strong>Activation progressive</strong><p class="petit" style="margin:5px 0 0">Les secrets peuvent etre prepares maintenant. Wave restera masque au checkout jusqu'a l'activation du parcours de paiement multi-tenant.</p></div><form class="carte" id="wave-form" style="margin-top:15px"><div class="champ"><label>Cle API Wave Business</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${wave.api_key_configuree ? `Configuree (termine par ${escapeHtml(wave.api_key_suffixe || "****")})` : "wave_..."}"><span class="champ-aide">La cle est chiffree dans Supabase Vault et n'est jamais envoyee au navigateur.</span></div><div class="champ"><label>Secret de signature Wave</label><input name="signing_secret" type="password" autocomplete="new-password" placeholder="${wave.signing_secret_configure ? "Configure — laisser vide pour conserver" : "wave_..."}"></div><label class="case"><input name="actif" type="checkbox" ${wave.actif ? "checked" : ""}> Marquer la configuration comme prete</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer Wave pour ce tenant</button></form>`;
+  const webhook = wave.jeton_webhook
+    ? `${window.IKIGAI_CONFIG?.supabaseUrl || ""}/functions/v1/paiement-webhook?tenant=${wave.jeton_webhook}`
+    : "Enregistrez d'abord la configuration pour générer l'adresse.";
+  zone.innerHTML = `<div class="entete-page"><div><h2>Paiements du tenant</h2><p class="muted petit">Une configuration Wave propre à ${escapeHtml(organisation.nom)}, partagée par ses établissements.</p></div>${badgeStatut(wave.actif ? "ACTIF" : "SUSPENDUE")}</div><div class="bande-info"><strong>Encaissement direct par le marchand</strong><p class="petit" style="margin:5px 0 0">Chaque boutique encaisse ses articles et ses frais de livraison sur son propre compte Wave. Un panier multi-boutiques produit un paiement par boutique.</p></div><form class="carte" id="wave-form" style="margin-top:15px"><div class="champ"><label>Clé API Wave Business</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${wave.api_key_configuree ? `Configurée (termine par ${escapeHtml(wave.api_key_suffixe || "****")})` : "wave_sn_prod_..."}"><span class="champ-aide">La clé est chiffrée dans Supabase Vault et n'est jamais envoyée au navigateur.</span></div><div class="champ"><label>Secret de signature Wave</label><input name="signing_secret" type="password" autocomplete="new-password" placeholder="${wave.signing_secret_configure ? "Configuré — laisser vide pour conserver" : "wave_sn_WHS_..."}"></div><div class="champ"><label>Adresse du webhook à enregistrer dans Wave Business</label><input value="${escapeHtml(webhook)}" readonly><span class="champ-aide">Dans Wave Business, choisissez les événements Checkout et la signature HMAC.</span></div><label class="case"><input name="actif" type="checkbox" ${wave.actif ? "checked" : ""}> Activer Wave au checkout</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer Wave pour ce tenant</button></form>`;
   zone.querySelector("#wave-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -608,7 +611,7 @@ function afficherPaiements(organisation, donnees) {
       p_actif: new FormData(form).has("actif"),
     });
     if (error) return gererErreur(error);
-    toast("Configuration Wave du tenant enregistree");
+    toast("Configuration Wave du tenant enregistrée");
     location.reload();
   });
   rafraichirIcones(zone);
@@ -621,12 +624,12 @@ async function afficherLivraison(donnees) {
   const configuration = etat.configuration;
   const catalogueZones = await chargerZonesIkms(configuration);
   const optionsZones = catalogueZones.zones
-    .map((element) => `<option value="${escapeHtml(element.code)}" ${element.code === integration.zone_depart ? "selected" : ""}>${escapeHtml(element.nom || element.code)}</option>`)
+    .map((element) => `<option value="${escapeHtml(element.code)}" ${element.code === (integration.zone_depart || donnees.boutique.zone_ramassage) ? "selected" : ""}>${escapeHtml(element.nom || element.code)}</option>`)
     .join("");
   const portail = configuration.ikms_portail_pro_url
     ? `<a class="btn btn-secondaire" href="${escapeHtml(configuration.ikms_portail_pro_url)}" target="_blank" rel="noopener">${icone("external-link")} Creer mon compte pro</a>`
     : "";
-  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configure")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Cle API : ${integration.cle_api_configuree ? "configuree dans le coffre securise" : "a renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label>${optionsZones ? `<select name="zone_depart" required><option value="">Choisir une zone</option>${optionsZones}</select>` : `<input name="zone_depart" value="${escapeHtml(integration.zone_depart)}" placeholder="COCODY" required>`}<span class="champ-aide">Liste synchronisee avec la grille IKMS.</span></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="A_LA_LIVRAISON" ${modePaiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${modePaiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option><option value="SANS_PAIEMENT" ${modePaiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option></select><span class="champ-aide">Facture compte pro fonctionne seulement si IKMS a active la facturation differee pour cette cle.</span></div></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Telephone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Cle API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la cle" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission a IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la connexion</button></form>`;
+  zone.innerHTML = `<div class="ligne-entre"><div><h2>${escapeHtml(configuration.ikms_tenant_nom || "IKIGAI Livraison")}</h2><p class="muted petit">Tenant logistique : ${escapeHtml(configuration.ikms_tenant_code || "Non configuré")}</p></div>${portail}</div><div class="bande-info ${integration.actif ? "" : "bande-attention"}" style="margin-top:14px"><strong>${integration.actif ? "Connexion active" : "Connexion inactive"}</strong><p class="petit" style="margin:5px 0 0">Clé API : ${integration.cle_api_configuree ? "configurée dans le coffre sécurisé" : "à renseigner"}</p></div><form class="carte" id="livraison-form" style="margin-top:15px"><h2>Tarification et compte client pro IKMS</h2><div class="grille-deux"><div class="champ"><label>Zone de ramassage</label>${optionsZones ? `<select name="zone_depart" required><option value="">Choisir une zone</option>${optionsZones}</select>` : `<input name="zone_depart" value="${escapeHtml(integration.zone_depart || donnees.boutique.zone_ramassage)}" placeholder="COC" required>`}<span class="champ-aide">Cette zone sert au calcul du prix, même avant l'activation du dispatch.</span></div><div class="champ"><label>Affichage des frais au client</label><select name="livraison_incluse_prix"><option value="false" ${!donnees.boutique.livraison_incluse_prix ? "selected" : ""}>Ajouter la livraison au panier</option><option value="true" ${donnees.boutique.livraison_incluse_prix ? "selected" : ""}>Livraison incluse dans le prix des articles</option></select><span class="champ-aide">Le coût IKMS reste enregistré en interne dans les deux cas pour votre facturation.</span></div></div><div class="champ"><label>Mode de paiement logistique</label><select name="mode_paiement"><option value="A_LA_LIVRAISON" ${modePaiement === "A_LA_LIVRAISON" ? "selected" : ""}>Paiement destinataire</option><option value="PAR_EXPEDITEUR" ${modePaiement === "PAR_EXPEDITEUR" ? "selected" : ""}>Paiement au ramassage</option><option value="SANS_PAIEMENT" ${modePaiement === "SANS_PAIEMENT" ? "selected" : ""}>Facture compte pro</option></select><span class="champ-aide">Facture compte pro fonctionne seulement si IKMS l'a activée pour cette clé.</span></div><div class="champ"><label>Nom au ramassage</label><input name="expediteur_nom" value="${escapeHtml(integration.expediteur_nom || donnees.boutique.nom)}" required></div><div class="grille-deux"><div class="champ"><label>Téléphone de ramassage</label><input name="expediteur_tel" type="tel" value="${escapeHtml(integration.expediteur_tel || donnees.boutique.telephone)}" placeholder="0700000000" required></div><div class="champ"><label>Adresse de ramassage</label><input name="expediteur_adresse" value="${escapeHtml(integration.expediteur_adresse || donnees.boutique.adresse)}" required></div></div><div class="champ"><label>Clé API client pro</label><input name="api_key" type="password" autocomplete="new-password" placeholder="${integration.cle_api_configuree ? "Laisser vide pour conserver la clé" : "ik_live_..."}"></div><label class="case"><input name="actif" type="checkbox" ${integration.actif ? "checked" : ""}> Activer la transmission à IKMS</label><button class="btn btn-primaire" style="margin-top:16px">${icone("lock-keyhole")} Enregistrer la livraison</button></form>`;
   zone.querySelector("#livraison-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -643,7 +646,12 @@ async function afficherLivraison(donnees) {
       p_actif: new FormData(form).has("actif"),
     });
     if (error) return gererErreur(error);
-    toast("Connexion IKMS enregistree");
+    const { error: tarifError } = await supabase.rpc("rpc_configurer_tarification_livraison_boutique", {
+      p_boutique_id: donnees.boutique.id,
+      p_livraison_incluse_prix: valeurs.livraison_incluse_prix === "true",
+    });
+    if (tarifError) return gererErreur(tarifError);
+    toast("Livraison enregistrée");
     location.reload();
   });
   rafraichirIcones(zone);
